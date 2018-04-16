@@ -23,7 +23,9 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
     #Select the desired features
     if (features == []):
         features = range(data.shape[1])
+    print(features)
     data = data[:,features]
+    print(data)
     m,n = data.shape
 
     #Initialize breakpoints
@@ -46,16 +48,16 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
 
         #Check if our algorithm is finished
         if(newVal == 0):
-            print "We are done adding breakpoints!"
-            print breaks
+            print("We are done adding breakpoints!")
+            print(breaks)
             return breaks, plotPoints
 
         #Add new breakpoint
         breaks.append(newInd)
         breaks.sort()
         if (verbose == True):
-            print "Breakpoint occurs at sample number: ", newInd, ", LL = ",  newVal
-            print len(breaks) - 2, breaks
+            print("Breakpoint occurs at sample number: ", newInd, ", LL = ",  newVal)
+            print(len(breaks) - 2, breaks)
 
         #Adjust current locations of the breakpoints
         breaks = adjustBreaks(data,breaks,[newInd],lamb,verbose)[:]
@@ -234,7 +236,8 @@ def adjustBreaks(data, breakpoints, newInd, lamb = 0, verbose = False, maxShuffl
         for b in bp:
             thisPass[b] = 0
         switchAny = False
-        ordering = range(1,len(bp) - 1)
+        ordering = list(range(1,len(bp) - 1))
+        # allocations = list(range(len(people)))
         random.shuffle(ordering)
         for i in ordering:
             #Check if we need to adjust it
@@ -247,7 +250,7 @@ def adjustBreaks(data, breakpoints, newInd, lamb = 0, verbose = False, maxShuffl
                     del thisPass[bp[i]]
                     thisPass[ind+bp[i-1]] = 1
                     if (verbose == True):
-                        print "Moving", bp[i], "to", ind+bp[i-1], "length = ", tempData.shape[0], ind
+                        print("Moving", bp[i], "to", ind+bp[i-1], "length = ", tempData.shape[0], ind)
                     bp[i] = ind + bp[i-1]
                     switchAny = True
         if (switchAny == False):

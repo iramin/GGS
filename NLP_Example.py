@@ -51,7 +51,7 @@ with open('ProcessedText.txt','r') as f:
         for raw in line.split():
             word = filter(str.isalpha, raw)
             if (word == 'BREAKPOINTSECTION'):
-                print "Breakpoint at", counter
+                print("Breakpoint at", counter)
                 continue
             try:
                 val = model.word_vec(word)
@@ -61,6 +61,6 @@ with open('ProcessedText.txt','r') as f:
                 continue
 
 #Run GGS
-print "Running GGS"
+print("Running GGS")
 a = GGS(data.T, 7, 0.0001)
-print a
+print( a)

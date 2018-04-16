@@ -10,7 +10,7 @@ data = np.genfromtxt(filename,delimiter=' ')
 feats = [0,3,7]
 
 data = data.T #Convert to an n-by-T matrix
-
+print(data.shape)
 
 # Find 10 breakpoints at lambda = 1e-4
 bps, objectives = GGS(data, Kmax = 10, lamb = 1e-4, features = feats)
@@ -20,8 +20,8 @@ bp10 = bps[10] # Get breakpoints for K = 10
 meancovs = GGSMeanCov(data, breakpoints = bp10, lamb = 1e-4, features = feats)
 
 
-print "Breakpoints are at", bps
-print "Objectives are", objectives
+print("Breakpoints are at", bps)
+print("Objectives are", objectives)
 
 # Plot objective vs. number of breakpoints
 plotVals = range(len(objectives))

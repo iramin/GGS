@@ -23,9 +23,14 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
     #Select the desired features
     if (features == []):
         features = range(data.shape[1])
+    print(len(features))
     print(features)
-    data = data[:,features]
-    print(data)
+    print(len(data))
+    print(data.shape)
+    print(data[features].shape)
+    # data = data[:,features]
+    data = data[features]
+
     m,n = data.shape
 
     #Initialize breakpoints
@@ -40,7 +45,8 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
         newVal = +1
         #For each segment, find breakpoint and increase in LL
         for i in range(numBreaks):
-            tempData = data[breaks[i]:breaks[i+1], :]
+            tempData = np.float64(data.iloc[breaks[i]:breaks[i + 1], :])
+            # tempData = data[breaks[i]:breaks[i+1], :]
             ind, val = addBreak(tempData, lamb)
             if(val < newVal):
                 newInd = ind + breaks[i]
@@ -144,7 +150,8 @@ def GGSMeanCov(data, breakpoints, lamb, features = [], verbose = False):
     #Select the desired features
     if (features == []):
         features = range(data.shape[1])
-    data = data[:,features]
+    # data = data[:,features]
+    data = data[features]
     m,n = data.shape
 
     numSegments = len(breakpoints) - 1
@@ -152,7 +159,8 @@ def GGSMeanCov(data, breakpoints, lamb, features = [], verbose = False):
     for i in range(numSegments):
 
         #Get mean and regularized covariance of current segment
-        tempData = data[breakpoints[i]:breakpoints[i+1],:]
+        # tempData = data[breakpoints[i]:breakpoints[i+1],:]
+        tempData = np.float64(data.iloc[breakpoints[i]:breakpoints[i+1],:])
         m,n = tempData.shape
         empMean = np.mean(tempData, axis=0)
         empCov = np.cov(tempData.T,bias = True)
@@ -173,7 +181,7 @@ def GGSMeanCov(data, breakpoints, lamb, features = [], verbose = False):
 def calculateLikelihood(data, breaks,lamb):
     ll = 0
     for i in range(len(breaks) - 1):
-        tempData = data[breaks[i]:breaks[i+1],:]
+        tempData = np.float64(data.iloc[breaks[i]:breaks[i+1],:])
         m,n = tempData.shape
         empCov = np.cov(tempData.T,bias = True)
         ll = ll - (m*np.linalg.slogdet(empCov + float(lamb)*np.identity(n)/m)[1] - float(lamb) * np.trace(np.linalg.inv(empCov + float(lamb)*np.identity(n)/m)))
@@ -242,7 +250,8 @@ def adjustBreaks(data, breakpoints, newInd, lamb = 0, verbose = False, maxShuffl
         for i in ordering:
             #Check if we need to adjust it
             if(lastPass[bp[i-1]] == 1 or lastPass[bp[i+1]] == 1 or thisPass[bp[i-1]] == 1 or thisPass[bp[i+1]] == 1):
-                tempData = data[bp[i-1]:bp[i+1], :]
+                # tempData = data[bp[i-1]:bp[i+1], :]
+                tempData = np.float64(data.iloc[bp[i-1]:bp[i+1], :])
                 ind, val = addBreak(tempData, lamb)   
                 if (bp[i] != ind + bp[i-1] and val != 0):  
                     lastPass[ind+bp[i-1]] = lastPass[bp[i]]

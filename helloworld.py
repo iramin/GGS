@@ -136,10 +136,67 @@ def findbp_plot(data, Kmax=10, lamb=1e-1, features = [], verbose = False):
     plt.show()
     return bps
 
+def convert_break_to_time(data, breaks):
+    time = []
+    for b in breaks:
+        time.append(data.iloc[min(b,data.shape[0] - 1), data.columns.get_loc('#Time')])
+    return time
 
-def Plot_predicted_Mean_Covs(breaks, data,features = [], verbose = False):
+def filter_motifs(time_list, breaks, motif_Tmin=None, motif_Tmax=None, verbose=True):
+
+    start = 0
+    stop = start + 1
+    filtered_list = []
+    filtered_break_list = []
+
+    if(motif_Tmin is None and motif_Tmax is None):
+        return breaks,time_list
+    filtered_list.append(time_list[start])
+    filtered_break_list.append(breaks[start])
+    while(stop < len(time_list)):
+        if(motif_Tmin is not None):
+            while(stop < len(time_list) and time_list[stop] - time_list[start] < motif_Tmin):
+                if(verbose):
+                    print("ignoring (" + str(time_list[start]) + "," + str(time_list[stop]) + ") because its length is shorter than the defined Tmin: " + str(motif_Tmin))
+                stop = stop + 1
+
+        if (motif_Tmax is not None):
+            while (stop < len(time_list) and time_list[stop] - time_list[start] > motif_Tmax):
+                if(verbose):
+                    print("ignoring (" + str(time_list[start]) + "," + str(time_list[stop]) + ") because its length is longer than the defined Tmax: " + str(motif_Tmax))
+                stop = stop + 1
+
+        if(stop < len(time_list)):
+            filtered_list.append(time_list[stop])
+            filtered_break_list.append(breaks[stop])
+
+        start = stop
+        stop = start + 1
+
+    return filtered_break_list, filtered_list
+
+def check_motif_criteria(data, breaks, motif_Tmin=30, motif_Tmax=300, verbose=True):
+    print("checking motif criteria")
+    time_list = convert_break_to_time(data, breaks)
+
+    breaks, time_list  = filter_motifs(time_list, breaks, motif_Tmin, motif_Tmax, verbose)
+
+    if (verbose):
+        for start in range(0,len(time_list) - 1):
+            stop = start + 1
+            print("(" + str(time_list[start]) + "," + str(time_list[stop]) + ")[" + str(breaks[start]) + "," + str(breaks[stop]) +  "] = " + str(time_list[stop] - time_list[start]))
+
+    return breaks
+
+
+def Plot_predicted_Mean_Covs(breaks, data,features = [], motif_Tmin=30, motif_Tmax=300, verbose = True):
     print("plotting mean covs")
+    breaks = check_motif_criteria(data.T, breaks,motif_Tmin, motif_Tmax, verbose)
+    if len(breaks) <= 1:
+        return
+
     mcs = GGSMeanCov(data, breaks, 1e-1, features, verbose)
+
     predicted = []
     varPlus = []
     varMinus = []

@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import math
 import pandas as pd
 import matplotlib.dates as md
-
+from intervaltree import Interval, IntervalTree
+from datetime import datetime
 
 def concat_metrics(src_df, metric_list):
     final_df = pd.DataFrame()
@@ -175,9 +176,65 @@ def filter_motifs(time_list, breaks, motif_Tmin=None, motif_Tmax=None, verbose=T
 
     return filtered_break_list, filtered_list
 
+
+def find_shared_period(times_list, breaks_list, epsilon_p=0):
+    print("finding shared region")
+
+
+    # for times in times_list:
+    #     for start in range(0, len(times) - 1):
+    #         stop = start + 1
+
+
+    trees = []
+    for times in times_list:
+        current_tree = IntervalTree()
+        for start in range(0, len(times) - 1):
+            stop = start + 1
+            current_tree.add(Interval(datetime.utcfromtimestamp(times[start]), datetime.utcfromtimestamp(times[stop])))
+        trees.append(current_tree)
+    result = trees[0]
+    for t in range(1,len(trees) - 1):
+        print(t)
+        search_result = set()
+        for interval_obj in trees[t+1]:
+
+            # print("searching for")
+            # print(interval_obj)
+            # print("in")
+            # print(result)
+
+            # initial value for result=trees[0]
+            # search for each member of trees[1] in result
+            # for  each search result do a max on the beginning of the searched range and the first member of the search result and do max for end of those ranges
+
+            # print("found")
+            current_search_result = result.search(interval_obj)
+            # print(current_search_result)
+            if(len(current_search_result) > 0):
+                first = list(sorted(current_search_result))[0]
+                if(first.begin < interval_obj.begin):
+                    current_search_result.remove(first)
+                    current_search_result.add(Interval(interval_obj.begin, first.end))
+
+                last = list(sorted(current_search_result))[len(current_search_result) - 1]
+                if(last.end > interval_obj.end):
+                    current_search_result.remove(last)
+                    current_search_result.add(Interval(last.begin, interval_obj.end))
+            search_result.update(current_search_result)
+            # print("revised")
+            # print(search_result)
+        result = sorted(search_result)
+    print("final result")
+    print(result)
+
+
 def check_motif_criteria(data, breaks, motif_Tmin=30, motif_Tmax=300, verbose=True):
     print("checking motif criteria")
     time_list = convert_break_to_time(data, breaks)
+
+    if(len(time_list) > 2):
+        find_shared_period([(time_list[0],time_list[2]),(time_list[1],time_list[2])], breaks)
 
     breaks, time_list  = filter_motifs(time_list, breaks, motif_Tmin, motif_Tmax, verbose)
 
@@ -187,6 +244,7 @@ def check_motif_criteria(data, breaks, motif_Tmin=30, motif_Tmax=300, verbose=Tr
             print("(" + str(time_list[start]) + "," + str(time_list[stop]) + ")[" + str(breaks[start]) + "," + str(breaks[stop]) +  "] = " + str(time_list[stop] - time_list[start]))
 
     return breaks
+
 
 
 def Plot_predicted_Mean_Covs(breaks, data,features = [], motif_Tmin=30, motif_Tmax=300, verbose = True):
@@ -251,11 +309,8 @@ def authors_example(num_samples_per_segment = 1000, Kmax=10, lamb=1e-1):
 
 def try_this_sampler(this_sampler, Kmax=8, lamb=1e-1, features=[0]):
     print('try_this_sampler')
-    print(this_sampler.shape)
     # this_sampler = np.reshape(this_sampler[features], (this_sampler[features].shape[0], len(features)))
-    print(this_sampler.shape)
     this_sampler = this_sampler.T  # Convert to an n-by-T matrix
-    print(this_sampler.shape)
     bps_this_sampler = findbp_plot(this_sampler, Kmax, lamb, features)
 
     for k in range(0,Kmax + 1):
@@ -279,9 +334,7 @@ def try_shm_sampler_example(shm_sampler, Kmax=20, lamb=1e-1, column='MPI_Issend'
     print('try_shm_sampler_example')
 
     rank_based_events = create_rank_based_events(mpi_events=['MPI_Issend'])
-    print(rank_based_events)
     this_sampler = shm_sampler#[rank_based_events[0]]  # procstat['procs_running'] #shm_sampler_group_df #meminfo['Dirty'] #shm_sampler #
-    print(this_sampler.shape)
     try_this_sampler(this_sampler, Kmax, lamb, rank_based_events)
 
     shm_sampler_group_df, [gr1] = create_shm_event_mpi_issend_goup_df(shm_sampler)
@@ -294,6 +347,25 @@ def try_shm_sampler_example(shm_sampler, Kmax=20, lamb=1e-1, column='MPI_Issend'
     this_sampler = shm_sampler_group_df#['d_' + column + '_dt']
     try_this_sampler(this_sampler, Kmax, lamb,rank_based_events)
 
+def try_all_samplers(shm_sampler, procstat, meminfo, Kmax=20, lamb=1e-1,features=[0]):
+    print("try_all_samplers")
+    times_list = []
+
+    this_sampler = meminfo.T  # Convert to an n-by-T matrix
+    bps_this_sampler = findbp_plot(this_sampler, 8, lamb, ['Dirty'])
+    times_list.append(convert_break_to_time(this_sampler.T, bps_this_sampler[8]))
+
+    this_sampler = procstat.T  # Convert to an n-by-T matrix
+    bps_this_sampler = findbp_plot(this_sampler, 3, lamb, ['procs_running'])
+    times_list.append(convert_break_to_time(this_sampler.T, bps_this_sampler[3]))
+
+    rank_based_events = create_rank_based_events(mpi_events=['MPI_Issend'])
+    this_sampler = shm_sampler.T  # Convert to an n-by-T matrix
+    bps_this_sampler = findbp_plot(this_sampler, Kmax, lamb, rank_based_events)
+    times_list.append(convert_break_to_time(this_sampler.T, bps_this_sampler[Kmax]))
+
+    find_shared_period(times_list, bps_this_sampler[Kmax])
+
 
 def ldms_example():
     print('ldms_example')
@@ -301,6 +373,7 @@ def ldms_example():
 
     # try_meminfo_example(meminfo)
     # try_procstat_example(procstat)
+    try_all_samplers(shm_sampler, procstat, meminfo)
     try_shm_sampler_example(shm_sampler)
 
 

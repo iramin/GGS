@@ -5,7 +5,7 @@ import math
 import pandas as pd
 import matplotlib.dates as md
 from intervaltree import Interval, IntervalTree
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def concat_metrics(src_df, metric_list):
     final_df = pd.DataFrame()
@@ -177,7 +177,7 @@ def filter_motifs(time_list, breaks, motif_Tmin=None, motif_Tmax=None, verbose=T
     return filtered_break_list, filtered_list
 
 
-def find_shared_period(times_list, breaks_list, epsilon_p=0):
+def find_shared_period(times_list, breaks_list, epsilon_p=timedelta(microseconds=1)):
     print("finding shared region")
 
 
@@ -209,18 +209,18 @@ def find_shared_period(times_list, breaks_list, epsilon_p=0):
             # for  each search result do a max on the beginning of the searched range and the first member of the search result and do max for end of those ranges
 
             # print("found")
-            current_search_result = result.search(interval_obj)
+            current_search_result = result.search(Interval(interval_obj.begin - epsilon_p, interval_obj.end + epsilon_p))
             # print(current_search_result)
             if(len(current_search_result) > 0):
                 first = list(sorted(current_search_result))[0]
-                if(first.begin < interval_obj.begin):
+                if(first.begin < interval_obj.begin - epsilon_p):
                     current_search_result.remove(first)
-                    current_search_result.add(Interval(interval_obj.begin, first.end))
+                    current_search_result.add(Interval(interval_obj.begin - epsilon_p, first.end))
 
                 last = list(sorted(current_search_result))[len(current_search_result) - 1]
-                if(last.end > interval_obj.end):
+                if(last.end > interval_obj.end + epsilon_p):
                     current_search_result.remove(last)
-                    current_search_result.add(Interval(last.begin, interval_obj.end))
+                    current_search_result.add(Interval(last.begin, interval_obj.end + epsilon_p))
             search_result.update(current_search_result)
             # print("revised")
             # print(search_result)

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import math
 import pandas as pd
 import matplotlib.dates as md
+import matplotlib.patches as patches
 from intervaltree import Interval, IntervalTree
 from datetime import datetime, timedelta
 
@@ -228,6 +229,72 @@ def find_shared_period(times_list, breaks_list, epsilon_p=timedelta(microseconds
     print("final result")
     print(result)
 
+    return result
+
+def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x', 'o', 'O', '.', '*'], colors= ["red", "blue","green","yellow"]):
+    y0 = 0
+    height = 1
+    for index, interval in enumerate(intervals):
+        begin = md.date2num(interval.begin)
+        end = md.date2num(interval.end)
+        p = patches.Rectangle(
+            (begin, y0),
+            end - begin,
+            height,
+            hatch=patterns[index % len(patterns)],
+            facecolor=colors[index % len(colors)],
+            fill=fill
+        )
+        ax.add_patch(p)
+    date_fmt = '%H:%M:%S'
+    xfmt = md.DateFormatter(date_fmt)
+    ax.xaxis.set_major_locator(md.SecondLocator(interval=60))
+    ax.xaxis.set_major_formatter(xfmt)
+    ax.set_xlim(min_start, max_end)
+    ax.set_ylim(y0, y0+height)
+
+def plot_all(intervals, ldms_data, ldms_time_data):
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    number_of_plots = 1 + len(ldms_data)
+    fig, axs_ret = plt.subplots(nrows=number_of_plots)
+    axs = {}
+    if number_of_plots == 1:
+        axs[0] = axs_ret
+    else:
+        axs = axs_ret
+
+
+    begin = md.date2num(intervals[0].begin)
+    end = md.date2num(intervals[len(intervals) - 1].end)
+
+    x_min = begin + begin - md.date2num(intervals[0].end)
+    x_max = end + end - md.date2num(intervals[len(intervals) - 1].begin)
+
+    print(md.num2date(x_min))
+    print(md.num2date(x_max))
+    # x_min = md.date2num(intervals[0].begin) - (md.date2num(intervals[0].end) - md.date2num(intervals[0].begin))
+    # x_max = md.date2num(intervals[len(intervals) - 1].end) + (md.date2num(intervals[len(intervals) - 1].end) - md.date2num(intervals[len(intervals) - 1].begin))
+    for index, data in enumerate(ldms_data):
+        if(ldms_time_data[index].min() < x_min):
+            x_min = ldms_time_data[index].min()
+        if(ldms_time_data[index].max() > x_max):
+            print(str(ldms_time_data[index].max()) + " in index " + str(index) + " is larger than " + str(x_max))
+            x_max = ldms_time_data[index].max()
+
+    print(md.num2date(x_min))
+    print(md.num2date(x_max))
+
+    date_fmt = '%H:%M:%S'
+    xfmt = md.DateFormatter(date_fmt)
+    for index, data in enumerate(ldms_data):
+        axs[index].plot(ldms_time_data[index],data)
+        axs[index].xaxis.set_major_locator(md.SecondLocator(interval=60))
+        axs[index].xaxis.set_major_formatter(xfmt)
+        axs[index].set_xlim(x_min, x_max)
+    plot_interval(intervals, axs[len(ldms_data)], x_min, x_max)
+    plt.show()
+
 
 def check_motif_criteria(data, breaks, motif_Tmin=30, motif_Tmax=300, verbose=True):
     print("checking motif criteria")
@@ -350,6 +417,8 @@ def try_shm_sampler_example(shm_sampler, Kmax=20, lamb=1e-1, column='MPI_Issend'
 def try_all_samplers(shm_sampler, procstat, meminfo, Kmax=20, lamb=1e-1,features=[0]):
     print("try_all_samplers")
     times_list = []
+    ldms_data = [shm_sampler['MPI_Issend.calls.4'], procstat['procs_running'], meminfo['Dirty']]
+    ldms_time_data = [md.epoch2num(shm_sampler['#Time']),md.epoch2num(procstat['#Time']),md.epoch2num(meminfo['#Time'])]
 
     this_sampler = meminfo.T  # Convert to an n-by-T matrix
     bps_this_sampler = findbp_plot(this_sampler, 8, lamb, ['Dirty'])
@@ -364,7 +433,8 @@ def try_all_samplers(shm_sampler, procstat, meminfo, Kmax=20, lamb=1e-1,features
     bps_this_sampler = findbp_plot(this_sampler, Kmax, lamb, rank_based_events)
     times_list.append(convert_break_to_time(this_sampler.T, bps_this_sampler[Kmax]))
 
-    find_shared_period(times_list, bps_this_sampler[Kmax])
+    shared_intervals = find_shared_period(times_list, bps_this_sampler[Kmax])
+    plot_all(shared_intervals, ldms_data, ldms_time_data)
 
 
 def ldms_example():
@@ -374,7 +444,7 @@ def ldms_example():
     # try_meminfo_example(meminfo)
     # try_procstat_example(procstat)
     try_all_samplers(shm_sampler, procstat, meminfo)
-    try_shm_sampler_example(shm_sampler)
+    # try_shm_sampler_example(shm_sampler)
 
 
 

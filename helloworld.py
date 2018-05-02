@@ -1,3 +1,4 @@
+
 from ggs import *
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,6 +6,7 @@ import math
 import pandas as pd
 import matplotlib.dates as md
 import matplotlib.patches as patches
+import gc
 from intervaltree import Interval, IntervalTree
 from datetime import datetime, timedelta
 
@@ -34,7 +36,6 @@ def processRatesForEventGroup(df, group):
     ret_group = []
     for i, item in enumerate(group):
         df = calcRate(df, group[i])
-        print('d_' + group[i] + '_dt')
         ret_group.append('d_' + group[i] + '_dt')
     return df, ret_group
 
@@ -113,7 +114,7 @@ def pre_process(all_dfs):
 
     return result_dfs
 
-def read_data(path = 'D:/ac/PhD/Research/data/05/data/XeonModelmilestoneRunRUN1/overheadX/ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/', datasets=['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev']):
+def read_data(path = 'D:/ac/PhD/Research/data/05/data/XeonModelmilestoneRunRUN1/overheadX/ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/', datasets=['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'milestoneRun']):
     print('reading data')
     all_dfs = []
     for ds in datasets:
@@ -128,6 +129,7 @@ def findbp_plot(data, Kmax=10, lamb=1e-1, features = [], verbose = False):
     print("finding breakpoints")
     # Find up to 10 breakpoints at lambda = 1e-1
     bps, objectives = GGS(data, Kmax, lamb, features, verbose)
+    print("found " + str(len(bps)) + " breakpoints")
 
     # Plot objective vs. number of breakpoints. Note that the objective essentially
     # stops increasing after K = 2, since there are only 2 "true" breakpoints
@@ -195,8 +197,9 @@ def find_shared_period(times_list, breaks_list, epsilon_p=timedelta(microseconds
             current_tree.add(Interval(datetime.utcfromtimestamp(times[start]), datetime.utcfromtimestamp(times[stop])))
         trees.append(current_tree)
     result = trees[0]
+
+
     for t in range(1,len(trees) - 1):
-        print(t)
         search_result = set()
         for interval_obj in trees[t+1]:
 
@@ -225,24 +228,43 @@ def find_shared_period(times_list, breaks_list, epsilon_p=timedelta(microseconds
             search_result.update(current_search_result)
             # print("revised")
             # print(search_result)
-        result = sorted(search_result)
-    print("final result")
-    print(result)
+        result = IntervalTree(sorted(search_result))
+    return sorted(set(result))
 
-    return result
-
-def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x', 'o', 'O', '.', '*'], colors= ["red", "blue","green","yellow"]):
+def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x', 'o', 'O', '.', '*'], colors= ["red", "blue","green","yellow","purple","cyan","white"],separateTSWithPattern=True):
+    print("plotting intervals")
     y0 = 0
     height = 1
+    tsIndex = 0
+    data_counters = {}
     for index, interval in enumerate(intervals):
         begin = md.date2num(interval.begin)
         end = md.date2num(interval.end)
+
+        if(interval.data != None):
+            if interval.data in data_counters:
+                data_counters[interval.data] = data_counters[interval.data] + 1
+            else:
+                data_counters[interval.data] = 1
+            if(separateTSWithPattern == True):
+                pattern = patterns[tsIndex % len(patterns)]
+                color = colors[index % len(colors)]
+            else:
+                color = colors[tsIndex % len(colors)]
+                pattern = patterns[index % len(patterns)]
+            if interval.data == 'Timestep':
+                tsIndex = tsIndex + 1
+        else:
+            color = colors[index % len(colors)]
+            pattern = patterns[index % len(patterns)]
+
+
         p = patches.Rectangle(
             (begin, y0),
             end - begin,
             height,
-            hatch=patterns[index % len(patterns)],
-            facecolor=colors[index % len(colors)],
+            hatch=pattern,
+            facecolor=color,
             fill=fill
         )
         ax.add_patch(p)
@@ -253,10 +275,24 @@ def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', 
     ax.set_xlim(min_start, max_end)
     ax.set_ylim(y0, y0+height)
 
-def plot_all(intervals, ldms_data, ldms_time_data):
+def plot_model(model, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x', 'o', 'O', '.', '*'], colors= ["red", "blue","green","yellow","purple","cyan","white"]):
+    print("plotting model")
+    current_tree = IntervalTree()
+    for i in range(0,model.shape[0] - 1):
+        start = model.iloc[i]['#Time']
+        stop = model.iloc[i+1]['#Time']
+        if start > stop:
+            start = stop -  (start-stop)
+            # stop = start + timedelta(microseconds=1)
+
+        current_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop), model.iloc[i+1]['metric']))
+    plot_interval(sorted(set(current_tree)), ax, min_start, max_end, fill, patterns, colors)
+
+def plot_all(intervals, milestoneRun,  ldms_data, ldms_time_data, name='all_in_one', savePath='D:/ac/PhD/Research/data/pd/01/', format='.pdf'):
+    print("plotting all (" + name + ")")
     # fig = plt.figure()
     # ax = fig.add_subplot(111)
-    number_of_plots = 1 + len(ldms_data)
+    number_of_plots = 2 + len(ldms_data)
     fig, axs_ret = plt.subplots(nrows=number_of_plots)
     axs = {}
     if number_of_plots == 1:
@@ -271,30 +307,30 @@ def plot_all(intervals, ldms_data, ldms_time_data):
     x_min = begin + begin - md.date2num(intervals[0].end)
     x_max = end + end - md.date2num(intervals[len(intervals) - 1].begin)
 
-    print(md.num2date(x_min))
-    print(md.num2date(x_max))
-    # x_min = md.date2num(intervals[0].begin) - (md.date2num(intervals[0].end) - md.date2num(intervals[0].begin))
-    # x_max = md.date2num(intervals[len(intervals) - 1].end) + (md.date2num(intervals[len(intervals) - 1].end) - md.date2num(intervals[len(intervals) - 1].begin))
     for index, data in enumerate(ldms_data):
         if(ldms_time_data[index].min() < x_min):
             x_min = ldms_time_data[index].min()
         if(ldms_time_data[index].max() > x_max):
-            print(str(ldms_time_data[index].max()) + " in index " + str(index) + " is larger than " + str(x_max))
             x_max = ldms_time_data[index].max()
-
-    print(md.num2date(x_min))
-    print(md.num2date(x_max))
 
     date_fmt = '%H:%M:%S'
     xfmt = md.DateFormatter(date_fmt)
+    plot_model(milestoneRun, axs[0], x_min, x_max)
     for index, data in enumerate(ldms_data):
-        axs[index].plot(ldms_time_data[index],data)
-        axs[index].xaxis.set_major_locator(md.SecondLocator(interval=60))
-        axs[index].xaxis.set_major_formatter(xfmt)
-        axs[index].set_xlim(x_min, x_max)
-    plot_interval(intervals, axs[len(ldms_data)], x_min, x_max)
-    plt.show()
+        axs[index+1].plot(ldms_time_data[index],data)
+        axs[index+1].xaxis.set_major_locator(md.SecondLocator(interval=60))
+        axs[index+1].xaxis.set_major_formatter(xfmt)
+        axs[index+1].set_xlim(x_min, x_max)
+    plot_interval(intervals, axs[number_of_plots - 1], x_min, x_max)
 
+    fig.set_size_inches(h=18.5, w=20)
+    fig.autofmt_xdate()
+    print('saving figure')
+    fig.savefig(savePath + name + format, dpi=2400)
+
+    fig.clf()
+    plt.close()
+    gc.collect()
 
 def check_motif_criteria(data, breaks, motif_Tmin=30, motif_Tmax=300, verbose=True):
     print("checking motif criteria")
@@ -405,16 +441,12 @@ def try_shm_sampler_example(shm_sampler, Kmax=20, lamb=1e-1, column='MPI_Issend'
     try_this_sampler(this_sampler, Kmax, lamb, rank_based_events)
 
     shm_sampler_group_df, [gr1] = create_shm_event_mpi_issend_goup_df(shm_sampler)
-
-    # grs = {}
-    # grs[0] = gr1
-    # this_sampler = shm_sampler[column]  # procstat['procs_running'] #shm_sampler_group_df #meminfo['Dirty'] #shm_sampler #
     shm_sampler_group_df.fillna(0,inplace=True)
     rank_based_events = create_rank_based_events(mpi_events=['MPI_Issend'], prefix='d_', postfix='_dt')
     this_sampler = shm_sampler_group_df#['d_' + column + '_dt']
     try_this_sampler(this_sampler, Kmax, lamb,rank_based_events)
 
-def try_all_samplers(shm_sampler, procstat, meminfo, Kmax=20, lamb=1e-1,features=[0]):
+def try_all_samplers(shm_sampler, procstat, meminfo, milestoneRun, Kmax=20, lamb=1e-1,features=[0]):
     print("try_all_samplers")
     times_list = []
     ldms_data = [shm_sampler['MPI_Issend.calls.4'], procstat['procs_running'], meminfo['Dirty']]
@@ -434,16 +466,31 @@ def try_all_samplers(shm_sampler, procstat, meminfo, Kmax=20, lamb=1e-1,features
     times_list.append(convert_break_to_time(this_sampler.T, bps_this_sampler[Kmax]))
 
     shared_intervals = find_shared_period(times_list, bps_this_sampler[Kmax])
-    plot_all(shared_intervals, ldms_data, ldms_time_data)
+
+    plot_all(shared_intervals, milestoneRun, ldms_data, ldms_time_data, name="without_rate")
+
+
+    shm_sampler_group_df, [gr1] = create_shm_event_mpi_issend_goup_df(shm_sampler)
+    shm_sampler_group_df.fillna(0,inplace=True)
+    rank_based_events = create_rank_based_events(mpi_events=['MPI_Issend'], prefix='d_', postfix='_dt')
+    this_sampler = shm_sampler_group_df.T#['d_' + column + '_dt']
+    bps_this_sampler = findbp_plot(this_sampler, Kmax, lamb, rank_based_events)
+    times_list.append(convert_break_to_time(this_sampler.T, bps_this_sampler[Kmax]))
+    ldms_data.append(shm_sampler_group_df['d_MPI_Issend.calls.4_dt'])
+    ldms_time_data.append(md.epoch2num(shm_sampler_group_df['#Time']))
+
+    shared_intervals = find_shared_period(times_list, bps_this_sampler[Kmax])
+
+    plot_all(shared_intervals, milestoneRun, ldms_data, ldms_time_data, name="with_rate")
 
 
 def ldms_example():
     print('ldms_example')
-    [meminfo, shm_sampler, vmstat, procstat, procnetdev] = pre_process(read_data())
+    [meminfo, shm_sampler, vmstat, procstat, procnetdev, milestoneRun] = pre_process(read_data())
 
     # try_meminfo_example(meminfo)
     # try_procstat_example(procstat)
-    try_all_samplers(shm_sampler, procstat, meminfo)
+    try_all_samplers(shm_sampler, procstat, meminfo, milestoneRun)
     # try_shm_sampler_example(shm_sampler)
 
 

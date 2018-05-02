@@ -23,11 +23,6 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
     #Select the desired features
     if (features == []):
         features = range(data.shape[1])
-    print(len(features))
-    print(features)
-    print(len(data))
-    print(data.shape)
-    print(data[features].shape)
     # data = data[:,features]
     data = data[features]
 

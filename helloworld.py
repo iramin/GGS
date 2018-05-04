@@ -1,6 +1,9 @@
 
 from ggs import *
 import numpy as np
+import pickle
+import itertools
+from multiprocessing.dummy import Pool as ThreadPool
 import matplotlib.pyplot as plt
 import math
 import pandas as pd
@@ -133,11 +136,11 @@ def findbp_plot(data, Kmax=10, lamb=1e-1, features = [], verbose = False):
 
     # Plot objective vs. number of breakpoints. Note that the objective essentially
     # stops increasing after K = 2, since there are only 2 "true" breakpoints
-    plotVals = range(len(objectives))
-    plt.plot(plotVals, objectives, 'or-')
-    plt.xlabel('Number of Breakpoints')
-    plt.ylabel(r'$\phi(b)$')
-    plt.show()
+    # plotVals = range(len(objectives))
+    # plt.plot(plotVals, objectives, 'or-')
+    # plt.xlabel('Number of Breakpoints')
+    # plt.ylabel(r'$\phi(b)$')
+    # plt.show()
     return bps
 
 def convert_break_to_time(data, breaks):
@@ -275,8 +278,65 @@ def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', 
     ax.set_xlim(min_start, max_end)
     ax.set_ylim(y0, y0+height)
 
-def plot_model(model, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x', 'o', 'O', '.', '*'], colors= ["red", "blue","green","yellow","purple","cyan","white"]):
-    print("plotting model")
+
+def calc_interval_counts(intervals, datapoints):
+    print("calc_interval_counts")
+    interval_counter = []
+    numOfDataPoints = len(datapoints)
+    dpIndex = 0
+    last_dp_index = 0
+    for interval in intervals:
+        current_counter = 0
+        while(dpIndex < numOfDataPoints):
+            dp = datapoints[dpIndex]
+            # if(len(datapoints) == 5645 and len(intervals) == 234):# or len(datapoints) == 5339 or len(datapoints) == 4947):
+            #     print(str(md.num2date(dp)) + " cmp " + str(interval))
+
+            if dp >= md.date2num(interval.begin):
+                if dp <= md.date2num(interval.end):
+                    current_counter = current_counter + 1
+                    dpIndex = dpIndex + 1
+                else:
+                    break
+            else:
+                if dp <= md.date2num(interval.end):
+                    dpIndex = dpIndex + 1
+                else:
+                    break
+        interval_counter.append(current_counter)
+    return interval_counter
+
+def calc_intervals_similarity_score(intervals1, intervals2, datapoints):
+
+    print("calc_intervals_similarity_score using " + str(len(datapoints)) + " datapoints")
+    interval_counter1 = calc_interval_counts(intervals1, datapoints)
+    interval_counter2 = calc_interval_counts(intervals2, datapoints)
+
+    score = 0
+    small_interval_counter = interval_counter2
+    large_interval_counter = interval_counter1
+    if(len(interval_counter1) < len(interval_counter2)):
+        small_interval_counter = interval_counter1
+        large_interval_counter = interval_counter2
+
+    small_interval_counter_len = len(small_interval_counter)
+    large_interval_counter_len = len(large_interval_counter)
+
+    interval_counter_index = 0
+
+    while interval_counter_index < small_interval_counter_len:
+        score = score + abs(small_interval_counter[interval_counter_index] - large_interval_counter[interval_counter_index])
+        interval_counter_index = interval_counter_index + 1
+    print("score = " + str(score) + " after comparing " + str(small_interval_counter_len) + " intervals")
+    while interval_counter_index < large_interval_counter_len:
+        score = score + large_interval_counter[interval_counter_index]
+        interval_counter_index = interval_counter_index + 1
+    print("score = " + str(score) + " after comparing " + str(large_interval_counter_len) + " intervals")
+
+    return score, sum(interval_counter1) / len(datapoints), sum(interval_counter2) / len(datapoints)
+
+
+def get_interval_tree_from_model(model):
     current_tree = IntervalTree()
     for i in range(0,model.shape[0] - 1):
         start = model.iloc[i]['#Time']
@@ -286,7 +346,11 @@ def plot_model(model, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x
             # stop = start + timedelta(microseconds=1)
 
         current_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop), model.iloc[i+1]['metric']))
-    plot_interval(sorted(set(current_tree)), ax, min_start, max_end, fill, patterns, colors)
+    return sorted(set(current_tree))
+
+def plot_model(model, ax,min_start, max_end, fill=True, patterns = ['-', '+', 'x', 'o', 'O', '.', '*'], colors= ["red", "blue","green","yellow","purple","cyan","white"]):
+    print("plotting model")
+    plot_interval(get_interval_tree_from_model(model), ax, min_start, max_end, fill, patterns, colors)
 
 def plot_all(intervals, milestoneRun,  ldms_data, ldms_time_data, name='all_in_one', savePath='D:/ac/PhD/Research/data/pd/01/', format='.pdf'):
     print("plotting all (" + name + ")")
@@ -467,6 +531,9 @@ def try_all_samplers(shm_sampler, procstat, meminfo, milestoneRun, Kmax=20, lamb
 
     shared_intervals = find_shared_period(times_list, bps_this_sampler[Kmax])
 
+    model_intervals = get_interval_tree_from_model(milestoneRun)
+
+
     plot_all(shared_intervals, milestoneRun, ldms_data, ldms_time_data, name="without_rate")
 
 
@@ -481,7 +548,150 @@ def try_all_samplers(shm_sampler, procstat, meminfo, milestoneRun, Kmax=20, lamb
 
     shared_intervals = find_shared_period(times_list, bps_this_sampler[Kmax])
 
+
+    union_score, coverage_shared_interval, coverage_model_interval = calc_intervals_similarity_score(shared_intervals, model_intervals,
+                                                    sorted(set(ldms_time_data[2].tolist()) | set(ldms_time_data[1].tolist()) | set(ldms_time_data[0].tolist()) | set(ldms_time_data[3].tolist())))
+    print("similarity score for the found "  + str(len(shared_intervals)) + " intervals and " + str(len(model_intervals)) + ", union_score= " + str(union_score) + " coverage_shared_interval, coverage_model_interval= " + str( coverage_shared_interval) + " " + str(coverage_model_interval))
+
     plot_all(shared_intervals, milestoneRun, ldms_data, ldms_time_data, name="with_rate")
+
+def mygrouper(n, iterable):
+    args = [iter(iterable)] * n
+    return ([e for e in t if e != None] for t in itertools.zip_longest(*args))
+
+def process_column(c, df, this_sampler, Kmax, lamb, counter = 0, verbose=True):
+    times_list = []
+    if c in ['#Time', 'Time_usec', 'ProducerName', 'component_id', 'job_id', 'MemTotal', 'MemFree', 'MemAvailable',
+             'Cached']:
+        return times_list
+    if verbose:
+        print(str(counter) + '/' + str(len(df.columns)) + ' c:' + c)
+    try:
+        bps_this_sampler = findbp_plot(this_sampler, Kmax, lamb, [c])
+    except np.linalg.linalg.LinAlgError:
+        return times_list
+    else:
+        print(len(bps_this_sampler))
+        print(bps_this_sampler)
+        if (type(bps_this_sampler[0]) is int):
+            if (len(bps_this_sampler) > 2):
+                times_list = convert_break_to_time(this_sampler.T, bps_this_sampler)
+        else:
+            times_list = convert_break_to_time(this_sampler.T, bps_this_sampler[len(bps_this_sampler) - 1])
+    return times_list
+
+def parallel_calc_breakpoints_for(numThreads,df, Kmax, lamb=1e-1, verbose=True):
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    columnList = mygrouper(numThreads, df.columns)
+    counter = 0
+    times_list = {}
+    this_sampler = df.T  # Convert to an n-by-T matrix
+    for columns in columnList:
+        if(len(columns) == numThreads):
+            args = []
+            for c in columns:
+                counter = counter + 1
+                args.append((c, df, this_sampler, Kmax, lamb, counter, verbose))
+
+            results = pool.starmap(process_column, args)
+
+            for index, a in enumerate(args):
+                if(len(results[index]) > 0):
+                    times_list[a[0]] = results[index]
+        else:
+            for c in columns:
+                counter = counter + 1
+                result = process_column(c, df, this_sampler, Kmax, lamb, counter, verbose)
+                if(len(result) > 0):
+                    times_list[c] = result
+    pool.close()
+    pool.join()
+    return times_list
+
+def calc_breakpoints_for(df, Kmax, lamb=1e-1, verbose=True):
+    times_list = {}
+    this_sampler = df.T  # Convert to an n-by-T matrix
+    counter = 0
+    for c in df.columns:
+        counter = counter + 1
+        if c in ['#Time', 'Time_usec', 'ProducerName', 'component_id', 'job_id', 'MemTotal', 'MemFree', 'MemAvailable','Cached']:
+            continue
+        if verbose:
+            print(str(counter) + '/' + str(len(df.columns)) + ' c:' + c)
+        try:
+            bps_this_sampler = findbp_plot(this_sampler, Kmax, lamb, [c])
+        except np.linalg.linalg.LinAlgError:
+            continue
+        else:
+            print(len(bps_this_sampler))
+            print(bps_this_sampler)
+            if(type(bps_this_sampler[0]) is int):
+                if (len(bps_this_sampler) > 2):
+                    times_list[c] = convert_break_to_time(this_sampler.T, bps_this_sampler)
+            else:
+                times_list[c] = convert_break_to_time(this_sampler.T, bps_this_sampler[len(bps_this_sampler) - 1])
+
+
+    return  times_list
+
+
+def try_all_metric_combinations(shm_sampler, procstat, meminfo, milestoneRun, Kmax=20, lamb=1e-1,features=[0], verbose=True):
+    print("try_all_metric_combinations")
+    model_intervals = get_interval_tree_from_model(milestoneRun)
+    ldms_time_data = [md.epoch2num(shm_sampler['#Time']), md.epoch2num(procstat['#Time']),
+                      md.epoch2num(meminfo['#Time'])]
+
+    # results = pool.starmap(calc_breakpoints_for, [(meminfo, 8, lamb, verbose), (shm_sampler, 20, lamb, verbose), (procstat, 3, lamb, verbose)])
+    #
+    # pool.close()
+    # pool.join()
+    #
+    # meminfo_times_list = results[0]
+    # shm_sampler_times_list = results[1]
+    # procstat_times_list = results[2]
+
+    meminfo_times_list = parallel_calc_breakpoints_for(8,meminfo, 8, lamb, verbose)
+    shm_sampler_times_list = parallel_calc_breakpoints_for(8,shm_sampler, 20, lamb, verbose)
+    procstat_times_list = parallel_calc_breakpoints_for(8,procstat, 20, lamb, verbose)
+
+    with open('D:/ac/PhD/Research/data/pd/01/all_metrics/meminfo.pickle', 'wb') as handle:
+        pickle.dump(meminfo_times_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    with open('D:/ac/PhD/Research/data/pd/01/all_metrics/shm_sampler.pickle', 'wb') as handle:
+        pickle.dump(shm_sampler_times_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    with open('D:/ac/PhD/Research/data/pd/01/all_metrics/procstat.pickle', 'wb') as handle:
+        pickle.dump(procstat_times_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print("All breakpoints have been found!")
+    # pool.close()
+
+    # meminfo_times_list = calc_breakpoints_for(meminfo, 8, lamb, verbose)
+    # shm_sampler_times_list = calc_breakpoints_for(shm_sampler, 20, lamb, verbose)
+    # procstat_times_list = calc_breakpoints_for(procstat, 3, lamb, verbose)
+
+    df_result = pd.DataFrame(columns = ['procstat','meminfo','shm_sampler','KMax','lamb','union_score', 'coverage_shared_interval','coverage_model_interval'])
+
+    index = 0
+    for p in procstat_times_list:
+        for m in meminfo_times_list:
+            for s in shm_sampler_times_list:
+                print(index)
+                ldms_data = [shm_sampler[s], procstat[p], meminfo[m]]
+                times_list = [shm_sampler_times_list[s], procstat_times_list[p], meminfo_times_list[m]]
+                shared_intervals = find_shared_period(times_list, None)
+                plot_all(shared_intervals, milestoneRun, ldms_data, ldms_time_data, name=p + "_" + m + "_" + s, savePath='D:/ac/PhD/Research/data/pd/01/all_metrics/')
+                union_score, coverage_shared_interval, coverage_model_interval = calc_intervals_similarity_score(
+                    shared_intervals, model_intervals,
+                    sorted(set(ldms_time_data[2].tolist()) | set(ldms_time_data[1].tolist()) | set(
+                        ldms_time_data[0].tolist())))
+                df_result[index] = (p,m,s,'8-20-20',lamb, union_score, coverage_shared_interval, coverage_model_interval)
+                df_result.to_csv('D:/ac/PhD/Research/data/pd/01/all_metrics/df_scores.csv')
+                index = index + 1
+                gc.collect()
+
+    print("Done")
+
 
 
 def ldms_example():
@@ -490,14 +700,15 @@ def ldms_example():
 
     # try_meminfo_example(meminfo)
     # try_procstat_example(procstat)
-    try_all_samplers(shm_sampler, procstat, meminfo, milestoneRun)
+    # try_all_samplers(shm_sampler, procstat, meminfo, milestoneRun)
+    try_all_metric_combinations(shm_sampler, procstat, meminfo, milestoneRun)
     # try_shm_sampler_example(shm_sampler)
 
-
-
-xAxis = '#Time'
-value_name = 'value'
-# authors_example()
-ldms_example()
+if __name__ == '__main__':
+    pool = ThreadPool(8)
+    xAxis = '#Time'
+    value_name = 'value'
+    # authors_example()
+    ldms_example()
 
 

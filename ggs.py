@@ -50,6 +50,11 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
         #Check if our algorithm is finished
         if(newVal == 0):
             print("We are done adding breakpoints!")
+
+            if (type(breaks[0]) is int):
+                fix_breaks = []
+                fix_breaks.append(breaks)
+                breaks = fix_breaks
             print(breaks)
             return breaks, plotPoints
 
@@ -68,6 +73,10 @@ def GGS(data, Kmax, lamb, features = [], verbose = False):
         breakPoints.append(breaks[:])
         plotPoints.append(ll)
 
+
+    if (type(breakPoints[0]) is int):
+        breakPoints = [breakPoints]
+
     return breakPoints, plotPoints
 
 #Run cross-validation up to Kmax for a set of lambdas
@@ -76,11 +85,11 @@ def GGSCrossVal(data, Kmax=25, lambList = [0.1, 1, 10], features = [], verbose =
     data = data.T
     if (features == []):
         features = range(data.shape[1])
-    data = data[:,features]
+    data = data[features]
     origSize, n = data.shape
 
     np.random.seed(0)
-    ordering = range(origSize)
+    ordering = list(range(origSize))
     random.shuffle(ordering)
 
     trainTestResults = []
@@ -89,18 +98,19 @@ def GGSCrossVal(data, Kmax=25, lambList = [0.1, 1, 10], features = [], verbose =
     numProcesses = min(multiprocessing.cpu_count(),10 )
     pool = multiprocessing.Pool(processes = numProcesses)
     for lamb in lambList:
+        print("lamb = %d", lamb)
         mseList = []
         trainList = []
-        returnList = pool.map(multi_run_wrapper, [(0,data, Kmax, lamb, verbose, origSize, n, ordering), 
-            (1,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (2,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (3,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (4,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (5,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (6,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (7,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (8,data, Kmax, lamb, verbose, origSize, n, ordering),
-            (9,data, Kmax, lamb, verbose, origSize, n, ordering)])
+        returnList = pool.map(multi_run_wrapper, [(0,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (1,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (2,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (3,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (4,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (5,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (6,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (7,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (8,data, Kmax, lamb, features, verbose, origSize, n, ordering),
+            (9,data, Kmax, lamb, features, verbose, origSize, n, ordering)])
 
         #Accumulate results
         for i in range(10):
@@ -110,7 +120,7 @@ def GGSCrossVal(data, Kmax=25, lambList = [0.1, 1, 10], features = [], verbose =
                 trainList.append(j)
 
         #Get average of the 10 folds
-        plotVals = map(list, zip(*mseList))
+        plotVals = list(map(list, zip(*mseList)))
         maxBreaks = max(plotVals[0])+1
         testAvg = []
         for i in range(maxBreaks):
@@ -121,7 +131,7 @@ def GGSCrossVal(data, Kmax=25, lambList = [0.1, 1, 10], features = [], verbose =
                     runsum = runsum + plotVals[1][j]
                     num = num + 1
             testAvg.append(float(runsum)/num)
-        plotVals2 = map(list, zip(*trainList))
+        plotVals2 = list(map(list, zip(*trainList)))
         trainAvg = []
         for i in range(maxBreaks):
             num = 0
@@ -263,22 +273,25 @@ def adjustBreaks(data, breakpoints, newInd, lamb = 0, verbose = False, maxShuffl
 
 def multi_run_wrapper(args):
     return oneFold(*args)
-def oneFold(fold, data, breakpoints, lamb, verbose, origSize, n, ordering):
+def oneFold(fold, data, breakpoints, lamb ,features, verbose, origSize, n, ordering):
+    print("fold =%d, lamb=%f",fold,lamb)
     # Remove 10% of data for test set
     mseList = []
     trainList = []
-    testSet = np.sort(ordering[(fold)*origSize/10:(fold+1)*origSize/10])
+    # print(ordering)
+    testSet = np.sort(ordering[int((fold)*origSize/10):int((fold+1)*origSize/10)])
     mask = np.ones(origSize, dtype=bool)
     mask[testSet] = False
-    trainData = data[mask,:]
+    trainData = data.iloc[mask,:]
     # Solve for test and train error
     testSize = len(testSet)
     trainSize = origSize - testSize
-    bp = GGS(trainData.T, breakpoints, lamb, [], verbose)[0]
+    bp = GGS(trainData.T, breakpoints, lamb, features, verbose)[0]
     for z in bp:
         i = z
         (mse, currBreak) = (0, 1)
-        temp = trainData[0:i[1]]
+        # temp = trainData[0:i[1]]
+        temp = np.float64(trainData.iloc[0:i[1], :])
         empMean = np.mean(temp, axis=0)
         empCov = np.cov(temp.T,bias = True) + float(lamb)*np.identity(n)/temp.shape[0]
         invCov = np.linalg.inv(empCov)
@@ -289,32 +302,35 @@ def oneFold(fold, data, breakpoints, lamb, verbose, origSize, n, ordering):
             cb = max(sum(1 for k in i if k < adj),1)
             if (currBreak != cb):
                 currBreak = cb
-                temp = trainData[i[currBreak-1]:i[currBreak]]
+                temp = np.float64(trainData.iloc[i[currBreak-1]:i[currBreak], :])
+                # temp = trainData[i[currBreak-1]:i[currBreak]]
                 empMean = np.mean(temp, axis=0)
                 empCov = np.cov(temp.T,bias = True) + float(lamb)*np.identity(n)/temp.shape[0]
                 invCov = np.linalg.inv(empCov)   
             #Compute likelihood
             ldet = 0.5*np.linalg.slogdet(invCov)[1]
-            ll = ldet - 0.5*(data[testSet[j]] - empMean).dot(invCov).dot((data[testSet[j]] - empMean)) - n*math.log(2*math.pi)/2
+            ll = ldet - 0.5*(data.iloc[testSet[j],:] - empMean).dot(invCov).dot((data.iloc[testSet[j],:] - empMean)) - n*math.log(2*math.pi)/2
             mse = mse+ll
         mseList.append((len(i)-2, mse/testSize))
         #Calculate training error
         tErr = 0
         currBreak = 1
-        temp = trainData[0:i[1]]
+        temp = np.float64(trainData.iloc[0:i[1], :])
+        # temp = trainData[0:i[1]]
         empMean = np.mean(temp, axis=0)
         empCov = np.cov(temp.T,bias = True) + float(lamb)*np.identity(n)/temp.shape[0]
         invCov = np.linalg.inv(empCov)
         for j in range(1,trainSize):
             if(j in i):
                 currBreak = currBreak + 1
-                temp = trainData[i[currBreak-1]:i[currBreak]]
+                temp = np.float64(trainData.iloc[i[currBreak-1]:i[currBreak], :])
+                # temp = trainData[i[currBreak-1]:i[currBreak]]
                 empMean = np.mean(temp, axis=0)
                 empCov = np.cov(temp.T,bias = True) + float(lamb)*np.identity(n)/temp.shape[0]
                 invCov = np.linalg.inv(empCov)   
             #Compute likelihood
             ldet = 0.5*np.linalg.slogdet(invCov)[1]
-            ll = ldet - 0.5*(trainData[j] - empMean).dot(invCov).dot((trainData[j] - empMean)) - n*math.log(2*math.pi)/2        
+            ll = ldet - 0.5*(trainData.iloc[j,:] - empMean).dot(invCov).dot((trainData.iloc[j,:] - empMean)) - n*math.log(2*math.pi)/2
             tErr = tErr+ll
         trainList.append((len(i)-2, tErr/trainSize))
     return mseList, trainList

@@ -2,8 +2,6 @@
 from numpy import log
 
 
-
-
 def calcRate(df, metric, timeMetric='#Time'):
     return ((df[metric] - df[metric].shift()) / (df[timeMetric]-df[timeMetric].shift()))
 
@@ -55,3 +53,16 @@ def do_sum_transform(df, metric_groups, group_names):
     for i, mg in enumerate(metric_groups):
         df, metric_groups[i] = processSumsForEventGroup(df, mg, group_names[i])
     return df, metric_groups
+
+
+
+def create_transform_event(df, events = [], transformed_names=[], ratetransform = True, sumtransform= False, logtransform = False):
+    if(sumtransform):
+        transformed_df, [ret_names]= do_sum_transform(df, [events], [transformed_names])
+
+    if(ratetransform):
+        transformed_df, [ret_names] = do_rate_transform(df, [events])
+
+    if(logtransform):
+        transformed_df, [ret_names] = do_log_transform(df, [events])
+    return transformed_df, [ret_names]

@@ -7,7 +7,9 @@ import ldms_transform as lt
 from PhaseDetection import *
 from PhaseDetectionPlot import *
 
+
 class PDExperiment(object):
+
     """A customer of ABC Bank with a checking account. Customers have the
     following properties:
 
@@ -41,6 +43,7 @@ class PDExperiment(object):
         self.phaseTMax = kwargs.get('phaseTMax', timedelta(microseconds=10000000))
 
         self.verbose = kwargs.get('verbose', False)
+        self.numThreads = kwargs.get('numThreads', 8)
 
         self.selectedMetrics['meminfo'] = kwargs.get('selectedMetrics_meminfo', 8)
         self.selectedMetrics['shm_sampler'] = kwargs.get('selectedMetrics_shm_sampler', 234)
@@ -48,6 +51,9 @@ class PDExperiment(object):
         self.selectedMetrics['procstat'] = kwargs.get('selectedMetrics_procstat', 20)
         self.selectedMetrics['procnetdev'] = kwargs.get('selectedMetrics_procnetdev', 20)
         self.selectedMetrics['milestoneRun'] = kwargs.get('selectedMetrics_milestoneRun', 234)
+
+        self.outputPath = kwargs.get('outputPath',
+                               'D:/ac/PhD/Research/data/pd/01/all_metrics/')
 
 
         self.data = kwargs.get('data')
@@ -62,6 +68,60 @@ class PDExperiment(object):
             print('{}: {}'.format(self.name, self.data.shape))
         if self.doPreProcess:
             self.preProcess()
+
+    def tryAllMetricCombinations(self,shm_sampler, procstat, meminfo, milestoneRun,  motif_Tmin=None, motif_Tmax=None, Kmax=20, lamb=1e-1,features=[0], verbose=True):
+        print("try_all_metric_combinations")
+
+        for metricSet in self.ldmsInstance.metricSets:
+            times = parallel_calc_breakpoints_for("{}{}_{}.pickle".format(
+                self.outputPath , metricSet , self.KMaxMap[metricSet]), self.numThreads, self.ldmsInstance.metricSets[metricSet], self.KMaxMap[metricSet],
+                ['Dirty', 'KernelStack', 'Writeback', 'SReclaimable', 'PageTables'], {}, motif_Tmin, motif_Tmax, lamb,
+                verbose)
+
+        # results = pool.starmap(calc_breakpoints_for, [(meminfo, 8, lamb, verbose), (shm_sampler, 20, lamb, verbose), (procstat, 3, lamb, verbose)])
+        #
+        # pool.close()
+        # pool.join()
+        #
+        # meminfo_times_list = results[0]
+        # shm_sampler_times_list = results[1]
+        # procstat_times_list = results[2]
+
+        meminfo_times_list = parallel_calc_breakpoints_for(
+            'D:/ac/PhD/Research/data/pd/01/all_metrics/meminfo_26.pickle', 8, meminfo, 26,
+            ['Dirty', 'KernelStack', 'Writeback', 'SReclaimable', 'PageTables'], {}, motif_Tmin, motif_Tmax, lamb,
+            verbose)
+        shm_sampler_times_list = parallel_calc_breakpoints_for(
+            'D:/ac/PhD/Research/data/pd/01/all_metrics/shm_sampler_234.pickle', 8, shm_sampler, 234,
+            ['MPI_Allreduce.calls.0', 'MPI_Issend.calls.0', 'MPI_Ssend.calls.0', 'MPI_Irecv.calls.16',
+             'MPI_Send.calls.16', 'MPI_Wtime.calls.0'], {}, motif_Tmin, motif_Tmax, lamb, verbose)
+        procstat_times_list = parallel_calc_breakpoints_for(
+            'D:/ac/PhD/Research/data/pd/01/all_metrics/procstat_26.pickle', 8, procstat, 26,
+            ['per_core_iowait0', 'per_core_softirqd0', 'per_core_sys5', 'procs_blocked', 'procs_running'], {},
+            motif_Tmin, motif_Tmax, lamb, verbose)
+
+        print("All breakpoints have been found!")
+        # pool.close()
+
+        # meminfo_times_list = calc_breakpoints_for(meminfo, 8, lamb, verbose)
+        # shm_sampler_times_list = calc_breakpoints_for(shm_sampler, 20, lamb, verbose)
+        # procstat_times_list = calc_breakpoints_for(procstat, 3, lamb, verbose)
+
+        # calc_score_store_plot(meminfo_times_list, procstat_times_list, shm_sampler_times_list, shm_sampler, procstat, meminfo, milestoneRun, lamb)
+
+        parallel_calc_score_store_plot(meminfo_times_list, procstat_times_list, shm_sampler_times_list, shm_sampler,
+                                       procstat, meminfo, milestoneRun,
+                                       procstat_selected_keys=['per_core_iowait0', 'per_core_softirqd0',
+                                                               'per_core_sys5', 'procs_blocked', 'procs_running'],
+                                       meminfo_selected_keys=['Dirty', 'KernelStack', 'Writeback', 'SReclaimable',
+                                                              'PageTables'],
+                                       shm_sampler_selected_keys=['MPI_Allreduce.calls.0', 'MPI_Issend.calls.0',
+                                                                  'MPI_Ssend.calls.0', 'MPI_Irecv.calls.16',
+                                                                  'MPI_Send.calls.16', 'MPI_Wtime.calls.0'])
+        #     calc_score_store_plot_metric_list(meminfo_times_list, procstat_times_list, shm_sampler_times_list, shm_sampler, procstat, meminfo, milestoneRun, procstat_selected_keys=['per_core_iowait0','per_core_softirqd0','per_core_sys5','procs_blocked','procs_running'],
+        #                                    meminfo_selected_keys=['Dirty','KernelStack','Writeback','SReclaimable','PageTables'], shm_sampler_selected_keys=['MPI_Allreduce.calls.0','MPI_Issend.calls.0','MPI_Ssend.calls.0','MPI_Irecv.calls.16','MPI_Send.calls.16','MPI_Wtime.calls.0'])
+
+        print("Done")
 
 
 def try_all_metric_combinations(shm_sampler, procstat, meminfo, milestoneRun,  motif_Tmin=None, motif_Tmax=None, Kmax=20, lamb=1e-1,features=[0], verbose=True):
@@ -100,9 +160,9 @@ def try_all_metric_combinations(shm_sampler, procstat, meminfo, milestoneRun,  m
 
 def calc_shm_only(shm_sampler,milestoneRun, metrics=['MPI_Allreduce.calls.0','MPI_Issend.calls.0','MPI_Ssend.calls.0','MPI_Irecv.calls.16','MPI_Send.calls.16','MPI_Wtime.calls.0'],motif_Tmin=None, motif_Tmax=None,Kmax=750, lamb=1e-1, verbose=False):
     metric_transform_map = {}
-    for m in metrics:
-        metric_transform_map[m] = "rate"
-    shm_sampler_times_list = parallel_calc_breakpoints_for('D:/ac/PhD/Research/data/pd/01/all_metrics/shm_sampler_234_rate.pickle', 8,shm_sampler, 234, ['MPI_Allreduce.calls.0','MPI_Issend.calls.0','MPI_Ssend.calls.0','MPI_Irecv.calls.16','MPI_Send.calls.16','MPI_Wtime.calls.0'],metric_transform_map,motif_Tmin, motif_Tmax, lamb, verbose)
+    # for m in metrics:
+    #     metric_transform_map[m] = "rate"
+    shm_sampler_times_list = parallel_calc_breakpoints_for('D:/ac/PhD/Research/data/pd/01/all_metrics/shm_sampler_207_new.pickle', 8,shm_sampler, 207, ['MPI_Allreduce.calls.0','MPI_Issend.calls.0','MPI_Ssend.calls.0','MPI_Irecv.calls.16','MPI_Send.calls.16','MPI_Wtime.calls.0'],metric_transform_map,motif_Tmin, motif_Tmax, lamb, verbose)
     model_intervals = get_interval_tree_from_model(milestoneRun)
     ldms_time_data = [md.epoch2num(shm_sampler['#Time'])]
     for s in metrics:
@@ -212,6 +272,42 @@ def plotbp_for(meminfo, metrics=['Dirty','KernelStack','Writeback','SReclaimable
         print(m)
         bps_this_sampler = findbp_plot(meminfo.T, Kmax, lamb, [m])
 
+def testSimilarityMethod(motif_Tmin=None, motif_Tmax=None,Kmax=233, lamb=1e-1, verbose=False, numThreads=8):
+    metrics = ['MPI_Issend.calls.0', 'MPI_Allreduce.calls.0',  'MPI_Ssend.calls.0', 'MPI_Irecv.calls.16',
+               'MPI_Send.calls.16', 'MPI_Wtime.calls.0']
+    metric_transform_map = {}
+    print("testSimilarityMethod")
+    ldmsInstance = LDMSInstance()
+    shm_sampler = ldmsInstance.getMetricSet("shm_sampler").getDataFrame()
+    milestoneRun = ldmsInstance.getMetricSet("milestoneRun").getDataFrame()
+
+    model_intervals = get_interval_tree_from_model(milestoneRun)
+
+    model_intervals, ts_intervals = get_two_level_interval_tree_from_model(milestoneRun)
+
+    Kmax=len(model_intervals) - 1
+    shm_sampler_times_list = parallel_calc_breakpoints_for('D:/ac/PhD/Research/data/pd/01/all_metrics/shm_sampler_207_new.pickle', numThreads,shm_sampler, Kmax, metrics,metric_transform_map,motif_Tmin, motif_Tmax, lamb, verbose)
+
+    # print(tree1)
+    # print(tree2)
+    # print(len(tree1))
+    # print(len(tree2))
+
+    shm_sampler['#Time'] = shm_sampler['#Time'].apply(lambda x: datetime.utcfromtimestamp((x)))
+    for c in metrics:
+        print(c)
+        times_list = [shm_sampler_times_list[c]]
+        filterred_trees, ignored_trees = get_interval_trees_from_times_list(times_list, motif_Tmin, motif_Tmax)
+        shared_intervals = find_shared_period(filterred_trees)
+        if len(shared_intervals) != len(model_intervals):
+            print("ignoring becuase of the different length {} vs {} ".format(len(shared_intervals), len(model_intervals)))
+            continue
+        calcIBSMDistance(shm_sampler['#Time'], model_intervals, shared_intervals)
+
+
+
+
+
 
 def ldms_example():
     print('ldms_example')
@@ -230,11 +326,11 @@ def ldms_example():
     # try_all_metric_combinations(shm_sampler, procstat, meminfo, milestoneRun)
     # try_largeKMax(shm_sampler, procstat, meminfo, milestoneRun, motif_Tmin=timedelta(microseconds=500000), motif_Tmax=timedelta(microseconds=10000000))
 
-    # calc_shm_only(shm_sampler, milestoneRun, motif_Tmin=timedelta(microseconds=100000), motif_Tmax=timedelta(microseconds=10000000))
+    calc_shm_only(shm_sampler, milestoneRun, motif_Tmin=timedelta(microseconds=1000), motif_Tmax=timedelta(microseconds=100000000))
 
     # plotbp_for(procstat,['per_core_sys5'])
 
-    calc_shm_multiVariate(shm_sampler, milestoneRun, motif_Tmin=timedelta(microseconds=100000), motif_Tmax=timedelta(microseconds=10000000))
+    # calc_shm_multiVariate(shm_sampler, milestoneRun, motif_Tmin=timedelta(microseconds=100000), motif_Tmax=timedelta(microseconds=10000000))
 
     # calcbp_for(shm_sampler)
     # try_shm_sampler_example(shm_sampler)
@@ -365,9 +461,13 @@ def authors_example(num_samples_per_segment = 1000, Kmax=10, lamb=1e-1):
     Plot_predicted_Mean_Covs(bps[2], data)
 
 
+
+
+
 if __name__ == '__main__':
     pool = ThreadPool(8)
     xAxis = '#Time'
     value_name = 'value'
     # authors_example()
     ldms_example()
+    # testSimilarityMethod()

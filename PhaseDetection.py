@@ -5,6 +5,8 @@ import pandas as pd
 import os.path
 import pickle
 import gc
+from pandas import DatetimeIndex
+from scipy.spatial.distance import cdist
 
 from intervaltree import Interval, IntervalTree
 
@@ -30,6 +32,21 @@ def get_interval_tree_from_model(model):
             # stop = start + timedelta(microseconds=1)
         current_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop), model.iloc[i+1]['metric']))
     return sorted(set(current_tree))
+
+def get_two_level_interval_tree_from_model(model):
+    current_tree = IntervalTree()
+    ts_tree = IntervalTree()
+    for i in range(0,model.shape[0] - 1):
+        start = model.iloc[i]['#Time']
+        stop = model.iloc[i+1]['#Time']
+        if start > stop:
+            start = stop -  (start-stop)
+            # stop = start + timedelta(microseconds=1)
+        if model.iloc[i+1]['metric'] == 'Timestep':
+            ts_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop), model.iloc[i+1]['metric']))
+        else:
+            current_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop), model.iloc[i+1]['metric']))
+    return sorted(set(current_tree)), sorted(set(ts_tree))
 
 def filter_motifs(time_list, breaks, motif_Tmin=None, motif_Tmax=None, verbose=True):
     verbose = True
@@ -610,5 +627,74 @@ def parallel_calc_score_store_plot(meminfo_times_list, procstat_times_list, shm_
     pool.join()
     print("Done! flushing results...")
     df_result.to_csv('D:/ac/PhD/Research/data/pd/01/all_metrics/df_scores.csv')
+
+
+def checkIntervalColumn(row,column):
+    # print(column)
+    if (column != 'rowIndex'):
+        if column[0] <= row['rowIndex'] < column[1]:
+            return 1
+        else:
+            return 0
+        # print("row.index={} row[{}]={}".format(row['rowIndex'],column,row[column]))
+
+def checkIntervals(row, columns):
+    # print(row)
+    # return columns.apply(lambda column: checkIntervalColumn(row,column))
+    for c in columns:
+        if(c == 'rowIndex'):
+            continue
+        if c[0] <= row['rowIndex'] < c[1]:
+            row[c] = 1
+        else:
+            row[c] = 0
+        # print("row.index={} row[{}]={}".format(row['rowIndex'],c,row[c]))
+        # print(row[c])
+    return row
+
+def testNewFunc(x):
+    print("testNewFunc1")
+    print(x)
+    print("testNewFunc2")
+    print(x.name)
+    print("testNewFunc3")
+    print(x.index)
+    if x.name[0] <= x.index < x.name[1]:
+        return 1
+    else:
+        return 0
+
+def my_fun(x,y):
+    print("test my_func 1")
+    print(x)
+    print("test my_func 2")
+    print(y)
+
+def calcIBSMDistance(allTimes, phaseSet1, phaseSet2):
+    print("calcIBSMDistance")
+    df1 = pd.DataFrame(index=allTimes, columns=phaseSet1)
+    df2 = pd.DataFrame(index=allTimes, columns=phaseSet2)
+
+
+    df1['rowIndex'] = df1.index
+    df2['rowIndex'] = df2.index
+
+    df1 = df1.apply(lambda row: checkIntervals(row, pd.Series(df1.columns)), axis=1)
+    df2 = df2.apply(lambda row: checkIntervals(row, pd.Series(df2.columns)), axis=1)
+
+
+    df1.drop(columns='rowIndex', inplace=True)
+    df2.drop(columns='rowIndex', inplace=True)
+
+    # print(df1.sum())
+    # print(df2.sum())
+    # print(df1.sum(axis=1))
+    # print(df2.sum(axis=1))
+
+    diff_df = abs(df1.values - df2.values)
+    print("Y=")
+    print(math.sqrt(diff_df.sum()))
+
+
 
 from PhaseDetectionPlot import plot_all

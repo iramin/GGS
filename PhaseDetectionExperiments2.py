@@ -663,10 +663,10 @@ def process_single(row):
                    path_KNL_MilestoneRun]
 
     ModelMap = {
-        path_Xeon_milestoneRun_abnormal: 'milestonerun',
-        path_Xeon_milestoneRun_normal: 'milestonerun',
+        path_Xeon_milestoneRun_abnormal: 'milestoneRun',
+        path_Xeon_milestoneRun_normal: 'milestoneRun',
         path_KNL_WaleElem: 'waleElemXflowMixFrac3.5m',
-        path_KNL_MilestoneRun: 'milestonerun'
+        path_KNL_MilestoneRun: 'milestoneRun'
     }
 
 

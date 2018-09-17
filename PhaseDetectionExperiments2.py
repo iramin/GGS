@@ -713,8 +713,12 @@ def process_single(row):
     sampler_df = all_samplers_df[sampler]
     dfs = [sampler_df]
 
-    y = extract_motifs(metricFileNames, motifFileNames, dfs=dfs, model=ldmsInstance.getMetricSet(model).getDataFrame(), l=motifLength)
-
+    try:
+        y = extract_motifs(metricFileNames, motifFileNames, dfs=dfs, model=ldmsInstance.getMetricSet(model).getDataFrame(), l=motifLength)
+    except Exception as e:
+        y = e.message
+    print("y=")
+    print(y)
     row['IBSM'] = y
 
 

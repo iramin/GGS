@@ -29,9 +29,47 @@ def get_interval_tree_from_model(model):
         stop = model.iloc[i+1]['#Time']
         if start > stop:
             start = stop -  (start-stop)
+        if start == stop:
             # stop = start + timedelta(microseconds=1)
+            continue
         current_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop), model.iloc[i+1]['metric']))
     return sorted(set(current_tree))
+
+def get_highLevel_interval_tree_from_model(model, tsMetricName = 'Timestep'):
+    current_tree = IntervalTree()
+    tsBegan = False
+    counter = 0
+    for i in range(0,model.shape[0]):
+        if model.iloc[i]['metric'] == tsMetricName:
+            if tsBegan:
+                stop = model.iloc[i]['#Time']
+                tsBegan = False
+                current_tree.add(Interval(datetime.utcfromtimestamp(start), datetime.utcfromtimestamp(stop),
+                                          "ts #" + str(counter)))
+                counter = counter + 1
+                if i != model.shape[0] - 1:
+                    start = model.iloc[i]['#Time']
+                    tsBegan = True
+            else:
+                start = model.iloc[i]['#Time']
+                tsBegan = True
+    return sorted(set(current_tree))
+
+
+
+def get_interval_tree_motifList(df, motifStartIndices, motifLength):
+    current_tree = IntervalTree()
+    for i in range(0,len(motifStartIndices)):
+        start = df.iloc[motifStartIndices[i]]['#Time']
+        stop = df.iloc[motifStartIndices[i] + motifLength]['#Time']
+        if start > stop:
+            start = stop -  (start-stop)
+        if start == stop:
+            # stop = start + timedelta(microseconds=1)
+            continue
+        current_tree.add(Interval(start, stop, "motif #{}".format(i)))
+    # return sorted(set(current_tree))
+    return current_tree
 
 def get_two_level_interval_tree_from_model(model):
     current_tree = IntervalTree()
@@ -157,10 +195,11 @@ def find_shared_period(interval_trees_list, epsilon_p=timedelta(microseconds=1))
     result = trees[0]
 
 
-    for t in range(1,len(trees) - 1):
+    for t in range(1,len(trees)):
+        # print(t)
         search_result = set()
-        for interval_obj in trees[t+1]:
-
+        for interval_obj in trees[t]:
+            # print(interval_obj)
             # print("searching for")
             # print(interval_obj)
             # print("in")
@@ -672,9 +711,30 @@ def my_fun(x,y):
 
 def calcIBSMDistance(allTimes, phaseSet1, phaseSet2):
     print("calcIBSMDistance")
+
+    # print(phaseSet1)
+    # print(phaseSet2)
+    # if len(phaseSet2) + 1 == len(phaseSet1):
+    #     phaseSet2.insert(0, Interval(phaseSet2[0].begin, phaseSet2[0].end,
+    #                                       "dummy"))
+
+    counter = 0
+    if len(phaseSet2) < len(phaseSet1):
+        while len(phaseSet2) < len(phaseSet1):
+            phaseSet2.insert(0, Interval(phaseSet2[0].begin, phaseSet2[0].end,
+                                         "dummy" + str(counter)))
+            counter += 1
+    elif len(phaseSet2) > len(phaseSet1):
+        while len(phaseSet1) < len(phaseSet2):
+            phaseSet1.insert(0, Interval(phaseSet1[0].begin, phaseSet1[0].end,
+                                         "dummy" + str(counter)))
+            counter += 1
+
     df1 = pd.DataFrame(index=allTimes, columns=phaseSet1)
     df2 = pd.DataFrame(index=allTimes, columns=phaseSet2)
 
+    # print(df1)
+    # print(df2)
 
     df1['rowIndex'] = df1.index
     df2['rowIndex'] = df2.index
@@ -683,8 +743,13 @@ def calcIBSMDistance(allTimes, phaseSet1, phaseSet2):
     df2 = df2.apply(lambda row: checkIntervals(row, pd.Series(df2.columns)), axis=1)
 
 
+
     df1.drop(columns='rowIndex', inplace=True)
     df2.drop(columns='rowIndex', inplace=True)
+
+    # print(df1)
+    # print(df2)
+
 
     # print(df1.sum())
     # print(df2.sum())
@@ -692,8 +757,9 @@ def calcIBSMDistance(allTimes, phaseSet1, phaseSet2):
     # print(df2.sum(axis=1))
 
     diff_df = abs(df1.values - df2.values)
-    print("Y=")
-    print(math.sqrt(diff_df.sum()))
+    y = math.sqrt(diff_df.sum())
+    # print("Y=" + str(y))
+    return y
 
 
 

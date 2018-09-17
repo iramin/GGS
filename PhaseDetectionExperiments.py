@@ -469,5 +469,5 @@ if __name__ == '__main__':
     xAxis = '#Time'
     value_name = 'value'
     # authors_example()
-    ldms_example()
-    # testSimilarityMethod()
+    # ldms_example()
+    testSimilarityMethod()

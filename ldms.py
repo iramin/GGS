@@ -1,5 +1,5 @@
 from pandas import DatetimeIndex, read_csv
-
+from datetime import datetime
 
 
 class LDMSMetricSet(object):
@@ -21,7 +21,7 @@ class LDMSMetricSet(object):
         if path != None:
             self.loadDataFrom(path)
 
-    def loadDataFrom(self, path, verbose=True):
+    def loadDataFrom(self, path, verbose=False):
         self.data = read_csv(path)
         if verbose:
             print('{}: {}'.format(self.name, self.data.shape))
@@ -31,6 +31,7 @@ class LDMSMetricSet(object):
     def preProcess(self):
         self.data.loc[:, 'Dummy'] = 0
         self.data.index = DatetimeIndex(self.data['#Time'])
+        # self.data['#Time'] = self.data['#Time'].apply(lambda x: datetime.utcfromtimestamp((x)))
 
     def getDataFrame(self):
         return self.data
@@ -54,7 +55,7 @@ class LDMSInstance(object):
         self.path = kwargs.get('path','D:/ac/PhD/Research/data/05/data/XeonModelmilestoneRunRUN1/overheadX/ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/')
         self.loadAllData()
 
-    def loadAllData(self, verbose=True):
+    def loadAllData(self, verbose=False):
         if verbose:
             print('loading all data')
         for dsName in self.datasetNames:

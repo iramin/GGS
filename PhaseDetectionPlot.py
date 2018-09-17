@@ -126,8 +126,8 @@ def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', 
     ax.set_xlim(min_start, max_end)
     ax.set_ylim(y0, y0+height)
 
-    for dc in data_counters:
-        print("{}= {}".format(dc,data_counters[dc]))
+    # for dc in data_counters:
+    #     print("{}= {}".format(dc,data_counters[dc]))
 
 def plot_model(model, ax,min_start, max_end, fill=True, patterns = ['-', '*', '.', '+',  'o', 'x', 'O'], colors= ["red", "blue","green","yellow","purple","cyan","white"], verbose=False):
     plot_interval(get_interval_tree_from_model(model), ax, min_start, max_end, fill, patterns, colors, verbose=verbose)

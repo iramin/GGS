@@ -643,7 +643,11 @@ def compare_all2():
         #     motifFileNames = metricFileNames
         #     extract_motifs(metricFileNames, motifFileNames, dfs=dfs, model=ldmsInstance.getMetricSet(model).getDataFrame(), l=ml)
 
+
+
 def process_single(row):
+    print(row)
+
     # 'D:/ac/PhD/Research/data/05/data/XeonModelmilestoneRunRUN1/overheadX/ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/'
     path_Xeon_milestoneRun_abnormal = 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/'
 
@@ -716,6 +720,7 @@ def process_single(row):
 
 def process_data(df):
     print(multiprocessing.current_process().name)
+    total = df.shape[0]
     df.apply(lambda x: process_single(x),axis=1)
     df.to_csv(path_or_buf=multiprocessing.current_process().name + '.csv', index=False)
     # print(df2)
@@ -728,7 +733,8 @@ def process_data(df):
 def compare_all3():
     print('compare_all3')
 
-
+    ppcounter = 0
+    total = 0
 
 
 
@@ -763,12 +769,17 @@ def compare_all3():
 
 ldms_instance_map = {}
 
+ppcounter = 0
+total = 0
+
+
 if __name__ == '__main__':
     # pool = ThreadPool(8)
     xAxis = '#Time'
     value_name = 'value'
     # authors_example()
-
+    ppcounter = 0
+    total = 0
     # ldms_example()
 
     # test_all_dfs()

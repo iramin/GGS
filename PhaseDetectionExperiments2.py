@@ -685,9 +685,10 @@ def process_single(row):
     # = pd.DataFrame(all_cases_list, columns=['workload', 'model', 'sampler', 'metric', 'motifLength', 'IBSM'])
     metric = row['metric']
     motifLength = row['motifLength']
-    model = row['model']
+
     workload = row['workload']
     sampler = row['sampler']
+    model = ModelMap[workload]  # row['model']
 
     motifFileNames = ["motifs/" + workload + sampler + "/" + str(motifLength) + "/" + metric]
     metricFileNames = ["metrics/" + workload + sampler + "/" + metric]

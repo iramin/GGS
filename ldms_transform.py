@@ -1,9 +1,14 @@
 
 from numpy import log
-
+import datetime
 
 def calcRate(df, metric, timeMetric='#Time'):
-    return ((df[metric] - df[metric].shift()) / (df[timeMetric]-df[timeMetric].shift()))
+    # print(type(df[timeMetric][0]))
+    # # print(df[timeMetric]-df[timeMetric].shift())
+    # # print(df[timeMetric].apply(lambda x: datetime.datetime.timestamp((x))))
+    # df['test_movaght'] = df[timeMetric].apply(lambda x: datetime.datetime.timestamp((x)))
+    # return ((df[metric] - df[metric].shift()) / ( df['test_movaght']-df['test_movaght'].shift()))
+    return ((df[metric] - df[metric].shift()) / (df[timeMetric] - df[timeMetric].shift()))
 
 def calcLog(df, metric, prefix='log_', postfix=''):
     df[prefix + metric + postfix] = df[metric].apply(lambda x: log(x))

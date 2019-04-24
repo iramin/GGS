@@ -21,7 +21,7 @@ class LDMSMetricSet(object):
         if path != None:
             self.loadDataFrom(path)
 
-    def loadDataFrom(self, path, verbose=False):
+    def loadDataFrom(self, path, verbose=True):
         self.data = read_csv(path)
         if verbose:
             print('{}: {}'.format(self.name, self.data.shape))

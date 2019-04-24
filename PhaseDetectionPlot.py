@@ -82,8 +82,12 @@ def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', 
     tsIndex = -1
     data_counters = {}
     for index, interval in enumerate(intervals):
+        # print(interval)
         begin = md.date2num(interval.begin)
         end = md.date2num(interval.end)
+
+        # begin = interval.begin
+        # end = interval.end
 
         if(interval.data != None):
             if index != 0:
@@ -120,8 +124,8 @@ def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', 
         ax.add_patch(p)
     date_fmt = '%H:%M:%S'
     xfmt = md.DateFormatter(date_fmt)
-    ax.xaxis.set_major_locator(md.SecondLocator(interval=60))
-    ax.xaxis.set_minor_locator(md.SecondLocator(interval=10))
+    ax.xaxis.set_major_locator(md.MinuteLocator(interval=100))
+    ax.xaxis.set_minor_locator(md.MinuteLocator(interval=25))
     ax.xaxis.set_major_formatter(xfmt)
     ax.set_xlim(min_start, max_end)
     ax.set_ylim(y0, y0+height)
@@ -130,7 +134,7 @@ def plot_interval(intervals, ax,min_start, max_end, fill=True, patterns = ['-', 
     #     print("{}= {}".format(dc,data_counters[dc]))
 
 def plot_model(model, ax,min_start, max_end, fill=True, patterns = ['-', '*', '.', '+',  'o', 'x', 'O'], colors= ["red", "blue","green","yellow","purple","cyan","white"], verbose=False):
-    plot_interval(get_interval_tree_from_model(model), ax, min_start, max_end, fill, patterns, colors, verbose=verbose)
+    plot_interval(get_highLevel_interval_tree_from_model(model), ax, min_start, max_end, fill, patterns, colors, verbose=verbose)
 
 def plotBP(objectives):
     # Plot objective vs. number of breakpoints. Note that the objective essentially

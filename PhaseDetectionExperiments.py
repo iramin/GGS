@@ -1,6 +1,9 @@
 from multiprocessing.dummy import Pool as ThreadPool
 import numpy as np
 
+from sklearn.cluster import DBSCAN
+from sklearn import metrics
+
 from ldms import *
 import ldms_transform as lt
 
@@ -335,7 +338,100 @@ def ldms_example():
     # calcbp_for(shm_sampler)
     # try_shm_sampler_example(shm_sampler)
 
+def ldms_example_non_mpi():
+    print('ldms_example')
+    model = 'waleElemXflowMixFrac3.5m'
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+    ds = all_samplers
+    if model != None:
+        ds = ds + [model]
+    ldmsInstance = LDMSInstance(datasets=ds, path='ModelwaleElemXflowMixFrac3.5mVersion1RUN1Interval1000000/')
+    meminfo = ldmsInstance.getMetricSet("meminfo").getDataFrame()
+    shm_sampler = ldmsInstance.getMetricSet("shm_sampler").getDataFrame()
+    vmstat = ldmsInstance.getMetricSet("vmstat").getDataFrame()
+    procstat = ldmsInstance.getMetricSet("procstat").getDataFrame()
+    procnfs = ldmsInstance.getMetricSet("procnfs").getDataFrame()
+    procnetdev = ldmsInstance.getMetricSet("procnetdev").getDataFrame()
+    milestoneRun = ldmsInstance.getMetricSet(model).getDataFrame()
 
+    # try_meminfo_example(meminfo)
+    # try_procstat_example(procstat)
+
+    # # plotbp_for(procnetdev, metrics=['tx_bytes#eth0'])
+    # # plotbp_for(meminfo, metrics=['Dirty'])
+    # plotbp_for(procstat, metrics=['procs_running'])
+    # try_meminfo_example(meminfo=meminfo, Kmax=10)
+    # try_procstat_example(procstat=procstat, Kmax=12)
+    print(procnfs.columns)
+    # try_this_sampler(this_sampler=meminfo, Kmax=4, lamb=1e-1, features=['Dirty'])
+
+    X = meminfo[['#Time','Dirty']]
+    db = DBSCAN(eps=0.3, min_samples=10).fit(X)
+    core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+    core_samples_mask[db.core_sample_indices_] = True
+    labels = db.labels_
+    # Number of clusters in labels, ignoring noise if present.
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+
+    print('Estimated number of clusters: %d' % n_clusters_)
+    # print("Homogeneity: %0.3f" % metrics.homogeneity_score(labels_true, labels))
+    # print("Completeness: %0.3f" % metrics.completeness_score(labels_true, labels))
+    # print("V-measure: %0.3f" % metrics.v_measure_score(labels_true, labels))
+    # print("Adjusted Rand Index: %0.3f"
+    #       % metrics.adjusted_rand_score(labels_true, labels))
+    # print("Adjusted Mutual Information: %0.3f"
+    #       % metrics.adjusted_mutual_info_score(labels_true, labels))
+    # print("Silhouette Coefficient: %0.3f"
+    #       % metrics.silhouette_score(X, labels))
+
+    # #############################################################################
+    # Plot result
+    import matplotlib.pyplot as plt
+
+    # Black removed and is used for noise instead.
+    unique_labels = set(labels)
+    colors = [plt.cm.Spectral(each)
+              for each in np.linspace(0, 1, len(unique_labels))]
+    for k, col in zip(unique_labels, colors):
+        if k == -1:
+            # Black used for noise.
+            col = [0, 0, 0, 1]
+
+        class_member_mask = (labels == k)
+
+        xy = X[class_member_mask & core_samples_mask]
+        plt.plot(xy[:, 0], xy[:, 1], 'o', markerfacecolor=tuple(col),
+                 markeredgecolor='k', markersize=14)
+
+        xy = X[class_member_mask & ~core_samples_mask]
+        plt.plot(xy[:, 0], xy[:, 1], 'o', markerfacecolor=tuple(col),
+                 markeredgecolor='k', markersize=6)
+
+    plt.title('Estimated number of clusters: %d' % n_clusters_)
+    plt.show()
+
+    # try
+
+
+def divid_based_IO_mpi():
+    print('ldms_example')
+    model = 'waleElemXflowMixFrac3.5m'
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+    ds = all_samplers
+    if model != None:
+        ds = ds + [model]
+    ldmsInstance = LDMSInstance(datasets=ds, path='ModelwaleElemXflowMixFrac3.5mVersion1RUN1Interval1000000/')
+    meminfo = ldmsInstance.getMetricSet("meminfo").getDataFrame()
+    shm_sampler = ldmsInstance.getMetricSet("shm_sampler").getDataFrame()
+    vmstat = ldmsInstance.getMetricSet("vmstat").getDataFrame()
+    procstat = ldmsInstance.getMetricSet("procstat").getDataFrame()
+    procnfs = ldmsInstance.getMetricSet("procnfs").getDataFrame()
+    procnetdev = ldmsInstance.getMetricSet("procnetdev").getDataFrame()
+    milestoneRun = ldmsInstance.getMetricSet(model).getDataFrame()
+
+    rank_based_events = create_rank_based_events(ranks=[6],mpi_events=['MPI_Reduce'])
+    this_sampler = shm_sampler#[rank_based_events[0]]  # procstat['procs_running'] #shm_sampler_group_df #meminfo['Dirty'] #shm_sampler #
+    try_this_sampler(procnfs, 2, 1e-1, ['read'])
 
 def try_this_sampler(this_sampler, Kmax=8, lamb=1e-1, features=[0]):
     print('try_this_sampler')
@@ -353,12 +449,12 @@ def try_this_sampler(this_sampler, Kmax=8, lamb=1e-1, features=[0]):
 def try_meminfo_example(meminfo, Kmax=8, lamb=1e-1, column='Dirty'):
     print('try_meminfo_example')
     this_sampler = meminfo[column]  # procstat['procs_running'] #shm_sampler_group_df #meminfo['Dirty'] #shm_sampler #
-    try_this_sampler(this_sampler, Kmax, lamb)
+    try_this_sampler(meminfo, Kmax, lamb, [column])
 
 def try_procstat_example(procstat, Kmax=3, lamb=1e-1, column='procs_running'):
     print('try_procstat_example')
     this_sampler = procstat[column]  # procstat['procs_running'] #shm_sampler_group_df #meminfo['Dirty'] #shm_sampler #
-    try_this_sampler(this_sampler, Kmax, lamb)
+    try_this_sampler(procstat, Kmax, lamb, [column])
 
 def try_shm_sampler_example(shm_sampler, Kmax=20, lamb=1e-1, column='MPI_Issend'):
     print('try_shm_sampler_example')
@@ -465,9 +561,12 @@ def authors_example(num_samples_per_segment = 1000, Kmax=10, lamb=1e-1):
 
 
 if __name__ == '__main__':
-    pool = ThreadPool(8)
+    # pool = ThreadPool(8)
     xAxis = '#Time'
     value_name = 'value'
     # authors_example()
     # ldms_example()
-    testSimilarityMethod()
+    # testSimilarityMethod()
+    # ldms_example_non_mpi()
+
+    divid_based_IO_mpi()

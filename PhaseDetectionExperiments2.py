@@ -1,9 +1,14 @@
+import sys
+
 from multiprocessing.dummy import Pool as ThreadPool
 import numpy as np
 from os import walk
 from ldms import *
+import statistics
 import csv
 import ldms_transform as lt
+
+from scipy.stats import chisquare
 
 from PhaseDetection import *
 from PhaseDetectionPlot import *
@@ -132,7 +137,7 @@ def plot_motif(Ta, Tb, values, indexes, m, df):
     plt.xlim((0, len(Ta)))
     plt.xlabel('Index')
     plt.ylabel('Value')
-    plt.show()
+    plt.show()['#Time']
 
 def plot_selected_motifs(ax, Ta, df, selectedMotifs, m, metric):
     ax.set_title(metric[:-4])
@@ -146,6 +151,18 @@ def plot_selected_motifs(ax, Ta, df, selectedMotifs, m, metric):
                     label='Motif #' + str(counter))
         counter = counter + 1
 
+def plot_one_selected_motifs(ax, Ta, df, selectedMotifs, m, metric):
+    ax.set_title("The best motif")
+    # ax.plot(df['#Time'].values, Ta, linestyle='--', alpha=0.5)
+
+    counter = 1
+    colors = ['g', 'y', 'b', 'r', 'c', 'm', 'k']
+
+    for item in selectedMotifs:
+        ax.plot(df['#Time'].iloc[range(item, item + m)], Ta, c=colors[counter % len(colors)],
+                    label='Motif #' + str(counter))
+        counter = counter + 1
+
 def plot_matrix_profile(ax, df, values):
     ax.set_title('Matrix Profile')
     ax.plot(df['#Time'].iloc[range(0, len(values))], values, '#ff5722')
@@ -156,12 +173,13 @@ def plot_motif_with_time(Ta, Tb, values, indexes, m, df, model, selectedMotifs, 
     from matplotlib import gridspec
     # plt.figure(figsize=(8, 4))
     # plt.subplot(211)
-    fig, axs = plt.subplots(nrows=4, sharex=True)
+    fig, axs = plt.subplots(nrows=5, sharex=True)
 
     selectedMotifsIndex = 1
+    oneMotifIndex = 2
     matrixProfileIndex = 0
-    modelIndex = 3
-    currentMotifsIntervalPlot = 2
+    modelIndex = 4
+    currentMotifsIntervalPlot = 3
     # sharedMotifsIntervalPlot = 4
 
     date_fmt = '%H:%M:%S'
@@ -173,6 +191,12 @@ def plot_motif_with_time(Ta, Tb, values, indexes, m, df, model, selectedMotifs, 
     axs[selectedMotifsIndex].xaxis.set_major_locator(md.SecondLocator(interval=100))
     axs[selectedMotifsIndex].xaxis.set_minor_locator(md.SecondLocator(interval=25))
     plot_selected_motifs(axs[selectedMotifsIndex], Ta, df, selectedMotifs, m, metric)
+
+    axs[oneMotifIndex].xaxis.set_major_formatter(xfmt)
+    axs[oneMotifIndex].xaxis.set_major_locator(md.SecondLocator(interval=25))
+    axs[oneMotifIndex].xaxis.set_minor_locator(md.SecondLocator(interval=5))
+    plot_one_selected_motifs(axs[oneMotifIndex], Tb, df, [selectedMotifs[0]], len(Tb), metric)
+
 
     axs[matrixProfileIndex].xaxis.set_major_locator(md.SecondLocator(interval=100))
     axs[matrixProfileIndex].xaxis.set_minor_locator(md.SecondLocator(interval=25))
@@ -207,6 +231,7 @@ def plot_motif_with_time(Ta, Tb, values, indexes, m, df, model, selectedMotifs, 
     name = metric[:-4]
     format = '.png'
     path=''
+    print(path + name + format)
     fig.savefig(path + name + format, dpi=600)
 
     fig.clf()
@@ -265,20 +290,13 @@ def load_motifs(fileName='motifs.txt', folder=None):
     motifs = motifs.drop(columns=[0]).sort_values([6])
     return motifs
 
-def extractMoreFromSelectedMotif(selectedMotif, ts, topK, df, allMotifs, model, metric):
-    start = int(selectedMotif[1])
-    stop = int(selectedMotif[2])
-    l = int(selectedMotif[5])
-    print("l={}, start={}, stop={}".format(l, start, stop))
-    query = ts[start:stop]
-    Pab, Iab = stamp(ts, query, l)
+def extractMoreFromSelectedMotifAndPlot(selectedMotif, ts, topK, df, allMotifs, model, metric):
+    Iab, Pab, current_motifs, l, query, selectedMotifs, sharedMotifs = extractMoreUsingSelectedMotif(allMotifs, df,
+                                                                                                     selectedMotif,
+                                                                                                     topK, ts)
 
-    selectedMotifs = findTopKMotifs(Pab, topK, l)
-    current_motifs = get_interval_tree_motifList(df, selectedMotifs, l)
-    allMotifs.append(current_motifs)
-    sharedMotifs = find_shared_period(allMotifs)
-
-    # plot_motif_with_time(ts, query, Pab, Iab, l, df, model, selectedMotifs, current_motifs, sharedMotifs, metric)
+    plot_motif_with_time(ts, query, Pab, Iab, l, df, model, selectedMotifs, current_motifs, sharedMotifs, metric)
+    gc.collect()
 
 
 #def calcIBSMDistance(allTimes, phaseSet1, phaseSet2):
@@ -288,23 +306,49 @@ def extractMoreFromSelectedMotif(selectedMotif, ts, topK, df, allMotifs, model, 
 
     return y
 
+
+def extractMoreUsingSelectedMotif(allMotifs, df, selectedMotif, topK, ts):
+
+    Iab, Pab, selectedMotifs = findMoreMotifsUsingOne(selectedMotif, topK, ts)
+
+    start = int(selectedMotif[1])
+    stop = int(selectedMotif[2])
+    l = int(selectedMotif[5])
+    query = ts[start:stop]
+
+    current_motifs = get_interval_tree_motifList(df, selectedMotifs, l)
+    allMotifs.append(current_motifs)
+    sharedMotifs = find_shared_period(allMotifs)
+    return Iab, Pab, current_motifs, l, query, selectedMotifs, sharedMotifs
+
+
+def findMoreMotifsUsingOne(selectedMotif, topK, ts):
+    start = int(selectedMotif[1])
+    stop = int(selectedMotif[2])
+    l = int(selectedMotif[5])
+    print("l={}, start={}, stop={}".format(l, start, stop))
+    query = ts[start:stop]
+    Pab, Iab = stamp(ts, query, l)
+    selectedMotifs = findTopKMotifs(Pab, topK, l)
+    return Iab, Pab, selectedMotifs
+
+
 def extract_motifs(metricFileNames, motifFileNames, dfs, model, l=400):
     topK=10
     allMotifs = []
     for metric, motif, df in zip(metricFileNames, motifFileNames, dfs):
-        print("\nmetric: " + metric)
-        ts = load_data(metric)
-        motifs = load_motifs(motif)
-        # print("before")
-        # print(motifs)
-        motifs = remove_overlaps(motifs, l)
-        # print("after")
-        # print(motifs)
-        selectedMotif = motifs.iloc[0]
-        # for index, selectedMotif in motifs.iterrows():
-        #     print("Selected motif: {}".format(index))
-        #     print(selectedMotif)
-        y = extractMoreFromSelectedMotif(selectedMotif, ts, topK, df, allMotifs, model, metric)
+        y = extract_motifs_from_one_metric(allMotifs, df, l, metric, model, motif, topK)
+    return y
+
+
+def extract_motifs_from_one_metric(allMotifs, df, l, metric, model, motif, topK):
+    print("\nmetric: " + metric)
+    print("\nmotif: " + motif)
+    ts = load_data(metric)
+    motifs = load_motifs(motif)
+    motifs = remove_overlaps(motifs, l)
+    selectedMotif = motifs.iloc[0]
+    y = extractMoreFromSelectedMotifAndPlot(selectedMotif, ts, topK, df, allMotifs, model, metric)
     return y
 
 
@@ -357,7 +401,7 @@ def test_all_dfs():
     procstat = ldmsInstance.getMetricSet("procstat").getDataFrame()
     procnetdev = ldmsInstance.getMetricSet("procnetdev").getDataFrame()
     procnfs = ldmsInstance.getMetricSet("procnfs").getDataFrame()
-    model = ldmsInstance.getMetricSet("waleElemXflowMixFrac3.5m").getDataFrame()
+    model = ldmsInstance.get_interval_tree_motifListgetMetricSet("waleElemXflowMixFrac3.5m").getDataFrame()
 
     # writeColumnInFile(shm_sampler,column='MPI_Issend.calls.0', transform=None)
     # writeColumnInFile(meminfo, column='Dirty', transform=None)
@@ -734,7 +778,7 @@ def process_data(df):
     # print(df6)
 
 
-def compare_all3():
+def compare_all3(tid):
     print('compare_all3')
 
     ppcounter = 0
@@ -752,6 +796,7 @@ def compare_all3():
     # pool.map(process_data,data_split)
 
     chunk_size = int(all_cases.shape[0] / multiprocessing.cpu_count() - 1)
+    print("ch=" + str(all_cases.shape[0] / 63))
     results = []
     for start in range(0, all_cases.shape[0], chunk_size):
         df_subset = all_cases.iloc[start:start + chunk_size]
@@ -776,9 +821,316 @@ ldms_instance_map = {}
 ppcounter = 0
 total = 0
 
+def appl_f(row):
+    if row[5].isnumeric():
+        return row
+
+def concat_all_dfs():
+    # df_list = []
+    # for i in range(0,63):
+    #     print(i)
+    #     data = pd.read_csv('D:/ac/PhD/Research/data/pd/02 - testAll/logsandcsvs/csvs/p' + str(i) + '.csv', sep=',', header=None)
+    #     df_list.append(data)
+    # result = pd.concat(df_list)
+    result = pd.read_csv('allData.csv', sep=',',
+                       header=None)
+    print(result.shape)
+    # print(result[result[5].isnumeric()].shape)
+    # r = result[result.apply(lambda x: print(type(x[5])),axis=1)]
+    r= result[pd.to_numeric(result[5], errors='coerce').notnull()]
+    print(r.shape)
+    r.to_csv(path_or_buf= 'allData_filterred.csv', index=False)
+
+
+def transform_workload(row):
+    workload = row['workload']
+    if workload == 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/':
+        row['workload'] = 'w0'
+    if workload == 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN2Interval100000/':
+        row['workload'] = 'w1'
+    if workload == 'ModelwaleElemXflowMixFrac3.5mVersion1RUN1Interval1000000/':
+        row['workload'] = 'w2'
+    if workload == 'ModelmilestoneRunPlacementVersion1SamplingVersion1NProc272RUN5Interval1000000/':
+        row['workload'] = 'w3'
+    return row
+
+def study_data(workload='w2'):
+    # o = pd.read_csv('allData.csv', sep=',',
+    #                    header=None)
+    result = pd.read_csv('allData_filterred.csv', sep=',')
+    print(result.shape)
+    # print(result.columns)
+    # result.columns = ['workload',  'model'  ,'sampler' , 'metric' , 'motifLength' , 'IBSM']
+    # print(result.columns)
+    # print(result.head())
+    # print(result['IBSM'].describe())
+    # print(result[result['IBSM']> 5].describe())
+    # result[result['IBSM'] > 5].to_csv(path_or_buf='allData_filterred.csv', index=False)
+    # print(result[result[5]<20])
+    # result[result[5] < 20].to_csv(path_or_buf= 'allData_lt20.csv', index=False)
+
+    r = result.apply(transform_workload, axis=1)
+    # print(r[r['workload'] == 'w3'].describe())
+    # hist = r.hist(bins=20,by=['workload','sampler'])
+
+
+    print(r[(r['workload'] == workload) & (r['sampler'] == 'meminfo')].groupby('metric').describe())
+    r[(r['workload'] == workload) & (r['sampler'] == 'meminfo')].groupby('metric').describe().to_csv("meminfo.csv")
+    r[(r['workload'] == workload) & (r['sampler'] == 'procnfs')].groupby('metric').describe().to_csv("procnfs.csv")
+    r[(r['workload'] == workload) & (r['sampler'] == 'procstat')].groupby('metric').describe().to_csv("procstat.csv")
+    r[(r['workload'] == workload) & (r['sampler'] == 'procnetdev')].groupby('metric').describe().to_csv("procnetdev.csv")
+    r[(r['workload'] == workload) & (r['sampler'] == 'vmstat')].groupby('metric').describe().to_csv("vmstat.csv")
+    r[(r['workload'] == workload) & (r['sampler'] == 'shm_sampler')].groupby('metric').describe().to_csv("shm_sampler.csv")
+    hist = r[(r['workload'] == workload) & (r['sampler'] == 'meminfo')].hist(bins=20, by=['sampler'])
+
+    plt.show()
+
+def study_current_params_gen_raphs(metrics, sampler,motifLength = 250):
+    path_Xeon_milestoneRun_abnormal = 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/'
+    path_Xeon_milestoneRun_normal = 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN2Interval100000/'
+    path_KNL_WaleElem = 'ModelwaleElemXflowMixFrac3.5mVersion1RUN1Interval1000000/'
+    path_KNL_MilestoneRun = 'ModelmilestoneRunPlacementVersion1SamplingVersion1NProc272RUN5Interval1000000/'
+
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+
+    input_paths = [path_Xeon_milestoneRun_abnormal, path_Xeon_milestoneRun_normal, path_KNL_WaleElem,
+                   path_KNL_MilestoneRun]
+
+    ModelMap = {
+        path_Xeon_milestoneRun_abnormal: 'milestoneRun',
+        path_Xeon_milestoneRun_normal: 'milestoneRun',
+        path_KNL_WaleElem: 'waleElemXflowMixFrac3.5m',
+        path_KNL_MilestoneRun: 'milestoneRun'
+    }
+
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+
+    for p, m in ModelMap.items():
+        ds = all_samplers + [m]
+
+        ldms_instance_map[p] = LDMSInstance(datasets=ds,
+                                            path=p)
+
+    origin_workload = path_KNL_WaleElem
+    ldmsInstance = ldms_instance_map[origin_workload]
+
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+    all_samplers_df = {}
+
+    sampler_motif_length = {}
+    for s in all_samplers:
+        all_samplers_df[s] = ldmsInstance.getMetricSet(s).getDataFrame()
+        all_samplers_df[s]['#Time'] = all_samplers_df[s]['#Time'].apply(lambda x: datetime.utcfromtimestamp((x)))
+        sampler_motif_length[s] = motifLength
+
+    sampler_df = all_samplers_df[sampler]
+    dfs = [sampler_df]
+
+    model = ModelMap[origin_workload]
+
+    sampler_motif_length['procnetdev'] = 200
+    sampler_motif_length['vmstat'] = 200
+
+    motifLength = sampler_motif_length[sampler]
+    for metric in metrics:
+        print(metric)
+        metricFileNames = ["metrics/" + origin_workload + sampler + "/" + metric]
+        motifFileNames = ["motifs/" + origin_workload + sampler + "/" + str(motifLength) + "/" + metric]
+        y = extract_motifs(metricFileNames, motifFileNames, dfs=dfs, model=ldmsInstance.getMetricSet(model).getDataFrame(),
+                       l=motifLength)
+        gc.collect()
+        print(y)
+
+def study_current_params(df,metrics, sampler,workload='w2'):
+    # r = df[(df['workload'] == workload) & (df['sampler'] == sampler) & (df.metric.isin(metrics))]
+    # print(r.groupby(['metric','motifLength']).describe())
+    # df.groupby(['workload','sampler','metric','motifLength']).describe().to_csv('workload_sampler_metrics.csv')
+    # hist = df.hist(bins=20, by=['motifLength'])
+
+    # df.groupby(['workload']).describe().to_csv('based_workload.csv')
+    # hist = df.hist(bins=20, by=['motifLength'])
+    #
+    # df.groupby(['workload','sampler']).describe().to_csv('based_workload_sampler.csv')
+    # hist = df.hist(bins=20, by=['motifLength'])
+    #
+    # df.groupby(['workload','motifLength']).describe().to_csv('based_workload_motiflength.csv')
+    # hist = df.hist(bins=20, by=['motifLength'])
+    #
+    # df.groupby(['workload','sampler','metric']).describe().to_csv('based_workload_sampler_metric.csv')
+    # hist = df.hist(bins=20, by=['motifLength'])
+
+    df.groupby(['sampler','motifLength']).describe().to_csv('based_sampler_motifLength.csv')
+    hist = df.hist(bins=20, by=['motifLength'])
+
+    plt.show()
+
+
+
+def study_specific_metrics():
+    result = pd.read_csv('allData_filterred.csv', sep=',')
+    r = result.apply(transform_workload, axis=1)
+    sampler_metrics = {
+        'procnfs' : ['write.rate.txt', 'numcalls.txt'],
+        'meminfo' : ['Dirty.txt', 'Slab.rate.txt'],
+        'procnetdev' : ['rx_bytes#eth0.rate.txt', 'rx_packets#eth0.rate.txt', 'tx_bytes#eth0.rate.txt', 'tx_packets#eth0.rate.txt'],
+        'vmstat' : ['nr_writeback.txt','pgactivate.rate.txt','nr_dirty.txt'],
+        'procstat' : ['user.rate.txt', 'per_core_user0.rate.txt', 'sys.rate.txt', 'per_core_sys1.txt', 'per_core_softirqd0.rate.txt'],
+        'shm_sampler' : ['MPI_Send.calls.1.txt','MPI_Ssend.calls.1.rate.txt','MPI_Wait.calls.0.rate.txt', 'MPI_Irecv.calls.0.rate.txt', 'MPI_Isend.calls.0.rate.txt', 'MPI_Issend.calls.1.rate.txt']
+    }
+
+    study_current_params(r, None, None)
+    for s,m in sampler_metrics.items():
+        print(s)
+        # study_current_params(r, m, s)
+        # study_current_params_gen_raphs(m,s)
+        gc.collect()
+
+def test_worst_case():
+    result = pd.read_csv('allData_filterred.csv', sep=',')
+    # r = result.apply(transform_workload, axis=1)
+    sampler_metrics = {
+        'shm_sampler' : ['MPI_Allreduce.calls.0.txt']
+    }
+    study_current_params_gen_raphs(['MPI_Allreduce.calls.0.txt'], 'shm_sampler',motifLength=400)
+    # study_current_params_gen_raphs(['MPI_Allreduce.calls.0.txt'], 'shm_sampler', motifLength=400)
+
+
+def chi2IsUniform(dataSet, significance=0.05):
+    print(dataSet)
+    chisq, pvalue = chisquare(dataSet)
+    print("chisq={}, pvalue={}".format(chisq,pvalue))
+    return pvalue > significance
+
+def init_for_motif_finding(motifLength, sampler):
+    path_Xeon_milestoneRun_abnormal = 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN1Interval100000/'
+    path_Xeon_milestoneRun_normal = 'ModelmilestoneRunPlacementVersion6SamplingVersion1RUN2Interval100000/'
+    path_KNL_WaleElem = 'ModelwaleElemXflowMixFrac3.5mVersion1RUN1Interval1000000/'
+    path_KNL_MilestoneRun = 'ModelmilestoneRunPlacementVersion1SamplingVersion1NProc272RUN5Interval1000000/'
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+    input_paths = [path_Xeon_milestoneRun_abnormal, path_Xeon_milestoneRun_normal, path_KNL_WaleElem,
+                   path_KNL_MilestoneRun]
+    ModelMap = {
+        path_Xeon_milestoneRun_abnormal: 'milestoneRun',
+        path_Xeon_milestoneRun_normal: 'milestoneRun',
+        path_KNL_WaleElem: 'waleElemXflowMixFrac3.5m',
+        path_KNL_MilestoneRun: 'milestoneRun'
+    }
+    all_samplers = ['meminfo', 'shm_sampler', 'vmstat', 'procstat', 'procnetdev', 'procnfs']
+    for p, m in ModelMap.items():
+        ds = all_samplers + [m]
+
+        ldms_instance_map[p] = LDMSInstance(datasets=ds,
+                                            path=p)
+    origin_workload = path_KNL_WaleElem
+    ldmsInstance = ldms_instance_map[origin_workload]
+    all_samplers_df = {}
+    sampler_motif_length = {}
+    for s in all_samplers:
+        all_samplers_df[s] = ldmsInstance.getMetricSet(s).getDataFrame()
+        all_samplers_df[s]['#Time'] = all_samplers_df[s]['#Time'].apply(lambda x: datetime.utcfromtimestamp((x)))
+        sampler_motif_length[s] = motifLength
+    sampler_df = all_samplers_df[sampler]
+    dfs = [sampler_df]
+    model = ModelMap[origin_workload]
+    sampler_motif_length['procnetdev'] = 200
+    sampler_motif_length['vmstat'] = 200
+    motifLength = sampler_motif_length[sampler]
+    return dfs, ldmsInstance, model, motifLength, origin_workload
+
+
+def get_motifs_from_metric(metric, motifLength, origin_workload, sampler):
+
+    topK=10
+
+    print(metric)
+    metricFileName = "metrics/" + origin_workload + sampler + "/" + metric
+    motifFileName = "motifs/" + origin_workload + sampler + "/" + str(motifLength) + "/" + metric
+
+    ts = load_data(metricFileName)
+    motifs = load_motifs(motifFileName)
+    motifs = remove_overlaps(motifs, motifLength)
+    selectedMotif = motifs.iloc[0]
+
+    Iab, Pab, selectedMotifs = findMoreMotifsUsingOne(selectedMotif, topK, ts)
+
+    print(selectedMotifs)
+    return selectedMotifs
+
+
+
+def testchi2IsUniform():
+    print("testchi2IsUniform")
+    result = pd.read_csv('allData_filterred.csv', sep=',')
+    # r = result.apply(transform_workload, axis=1)
+    sampler_metrics = {
+        'shm_sampler' : ['MPI_Allreduce.calls.0.txt']
+    }
+
+    dfs, ldmsInstance, model, motifLength, origin_workload = init_for_motif_finding(motifLength=250, sampler='shm_sampler')
+    selectedMotifs1 = get_motifs_from_metric('MPI_Issend.calls.1.rate.txt', motifLength, origin_workload, sampler='shm_sampler')
+
+    dfs, ldmsInstance, model, motifLength, origin_workload = init_for_motif_finding(motifLength=400, sampler='shm_sampler')
+    selectedMotifs2 = get_motifs_from_metric('MPI_Allreduce.calls.1.rate.txt', motifLength, origin_workload, sampler='shm_sampler')
+    # selectedMotifs.remove(51)
+    # print(selectedMotifs)
+    test = [5,205,405,605,805,1005,1205]
+    test2 = [199809, 200665, 199607, 200270, 199649]
+    test3 = [300,400,600,700,900,1000]
+    test4 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    test5 = [0.01,0.2,0.5,0.8,0.9]
+
+    selectedMotifs = np.ediff1d(sorted(selectedMotifs1))
+    selectedMotifs2 = np.ediff1d(sorted(selectedMotifs2))
+    test = np.ediff1d(sorted(test))
+    test2 = np.ediff1d(sorted(test2))
+    test3 = np.ediff1d(sorted(test3))
+    test4 = np.ediff1d(sorted(test4))
+    test5 = np.ediff1d(sorted(test5))
+
+    # print()
+
+    # test5 = test5 / max(test5)
+    print(chi2IsUniform(selectedMotifs))
+    print(statistics.stdev(selectedMotifs))
+
+    selectedMotifs1.remove(51)
+    selectedMotifs = np.ediff1d(sorted(selectedMotifs1))
+    print(chi2IsUniform(selectedMotifs))
+
+
+    selectedMotifs = selectedMotifs / (max(selectedMotifs))
+    print(chi2IsUniform(selectedMotifs))
+    print(statistics.stdev(selectedMotifs))
+
+
+
+
+    print(chi2IsUniform(selectedMotifs2))
+    print(statistics.stdev(selectedMotifs2))
+    selectedMotifs2 = selectedMotifs2 / (max(selectedMotifs2))
+    print(chi2IsUniform(selectedMotifs2))
+    print(statistics.stdev(selectedMotifs2))
+
+    print(chi2IsUniform(test))
+    print(statistics.stdev(test))
+    print(chi2IsUniform(test2))
+    print(statistics.stdev(test2))
+    print(chi2IsUniform(test3))
+    print(statistics.stdev(test3))
+    print(chi2IsUniform(test4))
+    print(statistics.stdev(test4))
+    print(chi2IsUniform(test5))
+    print(statistics.stdev(test5))
+
+
+
+
+
+
 
 if __name__ == '__main__':
     # pool = ThreadPool(8)
+    # tid = int(sys.argv[1])
     xAxis = '#Time'
     value_name = 'value'
     # authors_example()
@@ -789,7 +1141,12 @@ if __name__ == '__main__':
     # test_all_dfs()
     # compare_all()
     # write_all()
-    compare_all3()
+    # compare_all3(tid)
+    # concat_all_dfs()
+    # study_data()
+    # study_specific_metrics()
+    # test_worst_case()
+    testchi2IsUniform()
 
     # testFloss()
 

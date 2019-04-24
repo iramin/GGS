@@ -103,7 +103,7 @@ def stamp(Ta, Tb, m):
     :param m: subsequence length
     :return: Matrix Profile, Nearest-Neighbor indexes
     """
-    print("stamp")
+    print("stamp: begin")
     nb = len(Tb)
     na = len(Ta)
     Pab = np.ones(na - m)* np.inf
@@ -112,12 +112,12 @@ def stamp(Ta, Tb, m):
 
     sumT, sumT2, meanT, meanT_2, meanTP2, sigmaT, sigmaT2 = pre_compute_mean_std_for_TS(Ta, m)
 
+    print("stamp: before first for")
     a = np.zeros(na - m)
     for i in range(0, na - m):
         a[i] = (sumT2[i] - 2 * sumT[i] * meanT[i] + m * meanTP2[i]) / sigmaT2[i]
 
-
-
+    print("stamp: before second for")
     for idx in idxes:
         D = mass(Tb[idx: idx + m], Ta, a, meanT, sigmaT)
         Pab, Iab = element_wise_min(Pab, Iab, D, idx, ignore_trivial = np.atleast_1d(Ta == Tb).all(), m=m)

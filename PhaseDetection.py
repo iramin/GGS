@@ -58,10 +58,11 @@ def get_highLevel_interval_tree_from_model(model, tsMetricName = 'Timestep'):
 
 
 def get_interval_tree_motifList(df, motifStartIndices, motifLength):
+    print("get_interval_tree_motifList: begin")
     current_tree = IntervalTree()
     for i in range(0,len(motifStartIndices)):
         start = df.iloc[motifStartIndices[i]]['#Time']
-        stop = df.iloc[motifStartIndices[i] + motifLength]['#Time']
+        stop = df.iloc[motifStartIndices[i] + motifLength - 1]['#Time']
         if start > stop:
             start = stop -  (start-stop)
         if start == stop:
@@ -69,7 +70,22 @@ def get_interval_tree_motifList(df, motifStartIndices, motifLength):
             continue
         current_tree.add(Interval(start, stop, "motif #{}".format(i)))
     # return sorted(set(current_tree))
+    print("get_interval_tree_motifList: end")
     return current_tree
+
+def get_interval_tree_complement_motifList(df, motifStartIndices, motifStopIndices):
+    current_tree = IntervalTree()
+    for i in range(0,len(motifStartIndices)):
+        start = df.iloc[motifStartIndices[i]]['#Time']
+        stop = df.iloc[motifStopIndices[i]]['#Time']
+        if start > stop:
+            start = stop -  (start-stop)
+        if start == stop:
+            # stop = start + timedelta(microseconds=1)
+            continue
+        current_tree.add(Interval(start, stop, "motif #{}".format(i)))
+    return sorted(set(current_tree))
+    # return current_tree
 
 def get_two_level_interval_tree_from_model(model):
     current_tree = IntervalTree()
@@ -190,7 +206,7 @@ def get_interval_trees_from_times_list(times_list, motif_Tmin=None, motif_Tmax=N
     return filterred_trees, ignored_trees
 
 def find_shared_period(interval_trees_list, epsilon_p=timedelta(microseconds=1)):
-    print("finding shared region")
+    # print("finding shared region")
     trees = interval_trees_list
     result = trees[0]
 
@@ -763,4 +779,4 @@ def calcIBSMDistance(allTimes, phaseSet1, phaseSet2):
 
 
 
-from PhaseDetectionPlot import plot_all
+# from PhaseDetectionPlot import plot_all
